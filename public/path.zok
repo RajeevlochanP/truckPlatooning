@@ -1,0 +1,102 @@
+import "utils/casts/u32_to_field";
+import "hashes/poseidon/poseidon";
+const u32 MAX_NODES = 16;
+const u32 MAX_PATH = 16;
+const u32 MAX_SUBLEN = 8;
+const u32 ADJ_SIZE = MAX_NODES * MAX_NODES;
+
+def main(
+    // Public inputs
+    private u32[ADJ_SIZE] adj,
+    private u32[MAX_PATH] pub_path,
+    public u32 pub_len,
+    public u32 min_sublen,
+    public field hash_pubpath,
+    public field hash_adj,
+
+    // Private inputs
+    private u32[MAX_PATH] priv_path,
+    private u32 priv_len
+) -> u32[MAX_SUBLEN] {
+
+    // Basic checks
+    assert(pub_len <= MAX_PATH);
+    assert(priv_len <= MAX_PATH);
+    assert(min_sublen <= MAX_SUBLEN);
+    assert(min_sublen <= pub_len);
+    assert(min_sublen <= priv_len);
+
+    field mut h_adj = 0;
+    for u32 row in 0..MAX_NODES {
+        // pack 16 bits (one row) into a single field
+        field mut row_packed = 0;
+        field mut mult = 1; // multiplier = 2^j as field
+        for u32 col in 0..MAX_NODES {
+            u32 idx = row * MAX_NODES + col;
+            // adj[idx] is expected 0 or 1
+            // add adj[idx] * (2^col) to row_packed
+            row_packed = row_packed + u32_to_field(adj[idx]) * mult;
+            mult = mult * u32_to_field(2u32);
+        }
+        // chain-hash the rows (reduces 256 -> 16 calls)
+        h_adj = poseidon([h_adj, row_packed]);
+    }
+    assert(h_adj == hash_adj);
+
+    field mut h_pubpath = 0;
+    for u32 i in 0..MAX_PATH {
+        field x = u32_to_field(pub_path[i]);
+        h_pubpath = poseidon([h_pubpath, x]);
+    }
+    assert(h_pubpath == hash_pubpath);
+
+
+    // Helper: check node ids are in range [0, MAX_NODES-1]
+    // check for both paths
+    for u32 i in 0..MAX_PATH {
+        assert(i >= pub_len || pub_path[i] < MAX_NODES);
+        assert(i>=priv_len || priv_path[i] < MAX_NODES);
+    }
+
+    // Validate that both paths are valid walks in the graph:
+    // For every consecutive pair (path[t], path[t+1]) must have adj=1
+    // pub_path validation (only until pub_len-1)
+
+    //need to adjust indexing to 1 based
+    for u32 i in 0..(MAX_PATH - 1) {
+        u32 a = if(pub_path[i]>0){pub_path[i]-1} else {0u32};
+        u32 b = if(pub_path[i + 1]>0){pub_path[i + 1]-1} else {0u32};
+        u32 idx = a * MAX_NODES + b;
+        assert((i >= (pub_len - 1u32)) || (adj[idx] == 1u32));
+    }
+
+    //need to adjust indexing to 1 based
+    for u32 i in 0..(MAX_PATH - 1) {
+        u32 a = if(priv_path[i]>0){priv_path[i]-1} else {0u32};
+        u32 b = if(priv_path[i + 1]>0){priv_path[i + 1]-1} else {0u32};
+        u32 idx = a * MAX_NODES + b;
+        assert((i >= (priv_len - 1u32)) || (adj[idx] == 1u32));
+    }
+
+    // Search for first matching contiguous subpath of length `min_sublen`.
+    // We'll scan pub_path from i=0..(pub_len - min_sublen), and priv_path from j=0..(priv_len - min_sublen).
+    // Keep a `found` flag (0/1) and an output buffer `out_subpath` filled when we first match.
+
+    u32 mut found = 0u32;
+    u32 mut end = 0u32;
+    u32[MAX_SUBLEN] mut out_subpath = [0u32; MAX_SUBLEN];
+
+    for u32 i in 0..MAX_SUBLEN {
+        bool b=(end==0u32 && priv_path[i]==pub_path[i]);
+        out_subpath[i]=if(b){priv_path[i]} else {0u32};
+        found=found+if(b){1u32} else {0u32};
+        end=if(b){0u32} else {1u32};
+    }
+
+    // If nothing found, fail verification by asserting found == 1
+    assert(found >= min_sublen);
+
+    // Return the found subpath buffer (only first `min_sublen` entries meaningful)
+    return out_subpath;
+}
+
