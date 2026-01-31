@@ -70,7 +70,19 @@ catch(err){
   console.error("Error during proof generation:", err);
 }
 
+// send proof to chain for verification
+const response = await fetch("http://localhost:3000/verify/path", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ proof, output })
+});
 
+let respData = await response.json();
+console.log("Response from chain:", respData);
+
+// BLS part for authentication proof
 
 async function proofGen(h, sk) {
     const omega = await bls.sign(h, sk); // = h^sk
@@ -104,6 +116,18 @@ for (const sk of auth_sk) {
 
 // Aggregate Omegas (G1) and PKs (G2)
 const omegaAgg = aggregateProofs(proofs);
+
+// send the proof to chain for verification
+const response_proof = await fetch("http://localhost:3000/verify/auth", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ omegaAgg: [...omegaAgg], h: [...h], id: "1" })
+});
+
+respData = await response_proof.json();
+console.log("Response from chain:", respData);
 
 //write omegaAgg to file
 await fs.writeFile(

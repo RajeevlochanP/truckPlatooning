@@ -2,35 +2,45 @@ import fs from "fs/promises";
 import { initialize } from "zokrates-js";
 import * as dotenv from "dotenv";
 import * as bls from '@noble/bls12-381';
+import { id } from "ethers";
 
 dotenv.config({ quiet: true });
 const zokratesProvider = await initialize();
 
-// load zk artifacts
-const zk_artifacts = JSON.parse(
-  await fs.readFile("./public/zk_artifacts.json", "utf8")
-);
-zk_artifacts.program = Buffer.from(zk_artifacts.program, "base64");
+// // load zk artifacts
+// const zk_artifacts = JSON.parse(
+//   await fs.readFile("./public/zk_artifacts.json", "utf8")
+// );
+// zk_artifacts.program = Buffer.from(zk_artifacts.program, "base64");
 
-// run setup
-const keypair = zokratesProvider.setup(zk_artifacts.program);
-// console.log(keypair);
+// // run setup
+// const keypair = zokratesProvider.setup(zk_artifacts.program);
+// // console.log(keypair);
 
 
 
-//write keypair to file
+// //write keypair to file
 
-// prover key
-await fs.writeFile(
-  "./private/prover_key.json",
-  JSON.stringify(keypair.pk)
-);
+// // prover key
+// await fs.writeFile(
+//   "./private/prover_key.json",
+//   JSON.stringify(keypair.pk)
+// );
 
-// verifier key
-await fs.writeFile(
-  "./public/verifier_key.json",
-  JSON.stringify(keypair.vk)
-);
+// // verifier key
+// await fs.writeFile(
+//   "./public/verifier_key.json",
+//   JSON.stringify(keypair.vk)
+// );
+
+// send verifier key to chain
+// const response_vk = await fetch("http://localhost:3000/verifier-key", {
+//     method: "POST",
+//     headers: {
+//         "Content-Type": "application/json"
+//     },
+//     body: JSON.stringify({ vk: keypair.vk })
+// });
 
 
 // // export solidity verifier
@@ -49,7 +59,7 @@ function keyGen() {
     return { sk, pk };
 }
 
-// CA: create keys for 3 trucks
+// CA: create key pair for 3 company fleet for 1 truck
 const authKeypair = {pk: [], sk: []};
 for (let i = 0; i < 3; i++) {
     const { sk, pk } = keyGen();
@@ -65,6 +75,18 @@ await fs.writeFile(
   "./public/auth_pk.json",
   JSON.stringify(serialized_pk)
 );
+
+// send auth pk's to chain
+const response = await fetch("http://localhost:3000/register", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ authPks: serialized_pk,id: 1 })
+});
+const data = await response.json();
+
+console.log("Registration response: ", data);
 
 const serialized_sk = authKeypair.sk.map(sk => [...sk]);
 
