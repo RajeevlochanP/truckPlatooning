@@ -1,6 +1,8 @@
 import { initialize } from "zokrates-js";
 import fs from "fs/promises";
 import * as bls from '@noble/bls12-381';
+import bigInt from 'big-integer';
+import crypto from 'crypto';
 
 const zokratesProvider = await initialize();
 
@@ -22,6 +24,71 @@ pk = new Uint8Array(pk);
 // load public and private paths
 import {adj, pub_path, pub_len, h_adj, hash_pubpath} from "./public/graph.js";
 import {priv_path, priv_len} from "./private/path.js";
+
+function randBetween(min, max) {
+    const range = max.minus(min);
+    const byteLength = Math.ceil(range.bitLength() / 8);
+    let randomNum;
+    do {
+        const buffer = crypto.randomBytes(byteLength);
+        const hex = buffer.toString('hex');
+        randomNum = bigInt(hex, 16);
+    } while (randomNum.geq(range));
+    return randomNum.add(min);
+}
+
+/**
+ * UTILITY: Fiat-Shamir Challenge Generator
+ * Hashes inputs (N, g, C, A) to create a non-interactive challenge 'e'
+ */
+function generateChallenge(N, g, C, A) {
+    const hash = crypto.createHash('sha256');
+    // Concatenate standard string representations of the big integers
+    hash.update(N.toString());
+    hash.update(g.toString());
+    hash.update(C.toString());
+    hash.update(A.toString());
+    
+    // Convert hex hash to BigInt
+    const hex = hash.digest('hex');
+    return bigInt(hex, 16);
+}
+
+function proverGenerateProof(pubKey, m, r, C) {
+    const { n, g, n2 } = pubKey;
+
+    // 1. Commitment Phase
+    // Pick random rho in [0, n]
+    const rho = randBetween(bigInt(0), n);
+    // Pick random s in [1, n) (must be coprime to n, usually safe if random)
+    const s = randBetween(bigInt(1), n);
+
+    // A = g^rho * s^n mod n^2
+    const g_rho = g.modPow(rho, n2);
+    const s_n = s.modPow(n, n2);
+    const A = g_rho.multiply(s_n).mod(n2);
+
+    // 2. Challenge Phase (Fiat-Shamir)
+    const e = generateChallenge(n, g, C, A);
+
+    // 3. Response Phase
+    // z1 = rho + e * m (Note: Standard integer addition, NOT modulo)
+    const z1 = rho.add(e.multiply(m));
+
+    // z2 = s * r^e mod n
+    const r_e = r.modPow(e, n);
+    const z2 = s.multiply(r_e).mod(n);
+
+    console.log("-> Prover: Proof generated.");
+    
+    // Return the proof tuple
+    return { 
+        A: A.toString(), 
+        e: e.toString(), 
+        z1: z1.toString(), 
+        z2: z2.toString() 
+    };
+}
 
 
 const inputs = [

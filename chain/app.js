@@ -3,6 +3,8 @@ import * as bls from "@noble/bls12-381";
 import express from "express";
 import multer from "multer";
 import morgan from "morgan";
+import bigInt from 'big-integer';
+import crypto from 'crypto';
 
 const app = express();
 const port = 3000;
@@ -19,6 +21,76 @@ let globalVerifierKey = null;
 let verifierKeySetAt = null;
 
 const userStore = new Map();
+
+function randBetween(min, max) {
+    const range = max.minus(min);
+    const byteLength = Math.ceil(range.bitLength() / 8);
+    let randomNum;
+    do {
+        const buffer = crypto.randomBytes(byteLength);
+        const hex = buffer.toString('hex');
+        randomNum = bigInt(hex, 16);
+    } while (randomNum.geq(range));
+    return randomNum.add(min);
+}
+
+/**
+ * UTILITY: Fiat-Shamir Challenge Generator
+ * Hashes inputs (N, g, C, A) to create a non-interactive challenge 'e'
+ */
+function generateChallenge(N, g, C, A) {
+    const hash = crypto.createHash('sha256');
+    // Concatenate standard string representations of the big integers
+    hash.update(N.toString());
+    hash.update(g.toString());
+    hash.update(C.toString());
+    hash.update(A.toString());
+    
+    // Convert hex hash to BigInt
+    const hex = hash.digest('hex');
+    return bigInt(hex, 16);
+}
+
+/* VERIFIER FUNCTION */
+function verifierCheckProof(pubKey, C, proof) {
+    const { n, g, n2 } = pubKey;
+    
+    // Convert proof strings back to BigInts
+    const A = bigInt(proof.A);
+    const e = bigInt(proof.e);
+    const z1 = bigInt(proof.z1);
+    const z2 = bigInt(proof.z2);
+    const Cipher = bigInt(C);
+
+    // 1. Verify Challenge Integrity
+    const e_check = generateChallenge(n, g, Cipher, A);
+    
+    if (e.neq(e_check)) {
+        console.error("FAIL: Hash challenge mismatch.");
+        return false;
+    }
+
+    // 2. Verify Mathematical Equality
+    // LHS = g^z1 * z2^n mod n^2
+    const g_z1 = g.modPow(z1, n2);
+    const z2_n = z2.modPow(n, n2);
+    const LHS = g_z1.multiply(z2_n).mod(n2);
+
+    // RHS = A * C^e mod n^2
+    const C_e = Cipher.modPow(e, n2);
+    const RHS = A.multiply(C_e).mod(n2);
+
+    // Compare
+    const isValid = LHS.eq(RHS);
+
+    if (isValid) {
+        console.log("SUCCESS: ZKP Validated. Truck knows the path.");
+    } else {
+        console.error("FAIL: Mathematical verification failed.");
+    }
+
+    return isValid;
+}
 
 function generateUserId() {
   const timestamp = Date.now().toString(36);
