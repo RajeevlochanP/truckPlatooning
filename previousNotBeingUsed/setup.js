@@ -3,9 +3,33 @@ import { initialize } from "zokrates-js";
 import * as dotenv from "dotenv";
 import * as bls from '@noble/bls12-381';
 import { id } from "ethers";
+import bigInt from 'big-integer';
+import crypto from 'crypto';
 
 dotenv.config({ quiet: true });
 const zokratesProvider = await initialize();
+
+// ============== PAILLIER PUBLIC KEY SETUP ==============
+const p = bigInt(499);
+const q = bigInt(547);
+const n = p.multiply(q);
+const n2 = n.square();
+const g = n.add(1);
+const pubKey = { n, g, n2 };
+
+// Serialize pubKey for storage and chain registration
+const serializedPubKey = {
+  n: n.toString(),
+  g: g.toString(),
+  n2: n2.toString(),
+};
+
+// Save pubKey locally (for prover to use later)
+await fs.writeFile(
+  "./public/pub_key.json",
+  JSON.stringify(serializedPubKey)
+);
+console.log("Paillier public key saved locally.");
 
 // // load zk artifacts
 // const zk_artifacts = JSON.parse(
@@ -76,13 +100,13 @@ await fs.writeFile(
   JSON.stringify(serialized_pk)
 );
 
-// send auth pk's to chain
+// send auth pk's and pubKey to chain
 const response = await fetch("http://localhost:3000/register", {
     method: "POST",
     headers: {
         "Content-Type": "application/json"
     },
-    body: JSON.stringify({ authPks: serialized_pk,id: 1 })
+    body: JSON.stringify({ authPks: serialized_pk, pubKey: serializedPubKey, id: 1 })
 });
 const data = await response.json();
 

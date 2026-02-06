@@ -90,6 +90,12 @@ function proverGenerateProof(pubKey, m, r, C) {
     };
 }
 
+const p = bigInt(499);
+const q = bigInt(547);
+const n = p.multiply(q);
+const n2 = n.square();
+const g = n.add(1);
+const pubKey = { n, g, n2 };
 
 const inputs = [
   adj,          // 256-element array
@@ -138,16 +144,16 @@ catch(err){
 }
 
 // send proof to chain for verification
-const response = await fetch("http://localhost:3000/verify/path", {
-    method: "POST",
-    headers: {
-        "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ proof, output })
-});
+// const response = await fetch("http://localhost:3000/verify/path", {
+//     method: "POST",
+//     headers: {
+//         "Content-Type": "application/json"
+//     },
+//     body: JSON.stringify({ proof, output })
+// });
 
-let respData = await response.json();
-console.log("Response from chain:", respData);
+// let respData = await response.json();
+// console.log("Response from chain:", respData);
 
 // BLS part for authentication proof
 

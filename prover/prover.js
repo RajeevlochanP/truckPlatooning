@@ -1,0 +1,107 @@
+import fs from "fs/promises";
+import * as bls from '@noble/bls12-381';
+import * as paillierBigint from "paillier-bigint";
+import { encryptPathAndGenerateProofs, verifyProof } from './helpers/path.helper.js';
+import { proofGen, aggregateProofs } from './helpers/auth.helper.js';
+import { priv_path } from "../private/path.js";
+
+
+// ============== Reconstruct Paillier public key =============
+const pubKeyData = JSON.parse(
+  await fs.readFile("../public/paillier_pk.json", "utf8")
+);
+const pubKey = new paillierBigint.PublicKey(BigInt(pubKeyData.n), BigInt(pubKeyData.g));
+console.log("\n--- Paillier Public Key Reconstructed ---");
+
+
+// Encrypt private path and generate proofs  
+console.log("\n--- Encrypting Private Path ---");
+const { encryptedPath, proofs } = encryptPathAndGenerateProofs(pubKey, priv_path);
+
+
+// Verify proofs locally before sending to chain
+console.log("\n--- Local Verification (Testing) ---");
+let allLocalValid = true;
+for (let i = 0; i < encryptedPath.length; i++) {
+  const isValid = verifyProof(pubKey, encryptedPath[i], proofs[i]);
+  console.log(`Segment ${i}: ${isValid ? '✓ Valid' : '✗ Invalid'}`);
+  if (!isValid) allLocalValid = false;
+}
+if (!allLocalValid) {
+  console.error("Local verification failed! Aborting.");
+  process.exit(1);
+}
+
+
+
+// ============== SEND TO CHAIN FOR VERIFICATION ==============
+console.log("\n--- Sending to Chain for Verification ---");
+
+const pathResponse = await fetch("http://localhost:3000/verify/path", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    id: "1",
+    encryptedPath,
+    proofs,
+  })
+});
+
+const pathData = await pathResponse.json();
+console.log("Path verification response:", pathData);
+
+
+
+await fs.writeFile(
+  "../public/encrypted_path.json",
+  JSON.stringify({ encryptedPath })
+);
+
+console.log("\n--- Encrypted path saved ---");
+
+
+// ============== BLS AUTHENTICATION PROOF ==============
+console.log("\n--- BLS Authentication Proof ---");
+
+// Load auth keypair
+const arr = JSON.parse(
+  await fs.readFile("../private/auth_sk.json", "utf8")
+);
+const auth_sk = arr.map(bytes => Uint8Array.from(bytes));
+
+const message = "one-time-secret-identifier-13"; // m
+
+const h = new TextEncoder().encode(message);
+const hPoint = await bls.PointG1.hashToCurve(h);
+
+// Truck computes its one-time proof Omega_λ = h^sk
+const blsProofs = [];
+for (const sk of auth_sk) {
+  const omega = await proofGen(h, sk);
+  blsProofs.push(omega);
+}
+
+// Aggregate Omegas (G1) and PKs (G2)
+const omegaAgg = aggregateProofs(blsProofs);
+
+// Send the proof to chain for verification
+const response_proof = await fetch("http://localhost:3000/verify/auth", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({ authProof: { omegaAgg: [...omegaAgg], h: [...h] }, id: "1" })
+});
+
+const authData = await response_proof.json();
+console.log("Auth verification response:", authData);
+
+// Write omegaAgg to file
+await fs.writeFile(
+  "../public/auth_proof.json",
+  JSON.stringify({ omegaAgg: [...omegaAgg], h: [...h] })
+);
+
+console.log("\n--- All Done! ---");

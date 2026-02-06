@@ -1,8 +1,8 @@
 {
-  "name": "chain",
+  "name": "prover",
   "version": "1.0.0",
   "description": "",
-  "main": "app.js",
+  "main": "prover.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -13,10 +13,7 @@
   "dependencies": {
     "@noble/bls12-381": "^1.4.0",
     "big-integer": "^1.6.52",
-    "express": "^5.2.1",
-    "morgan": "^1.10.1",
-    "multer": "^2.0.2",
-    "paillier-bigint": "^3.4.3",
-    "zokrates-js": "^1.1.9"
+    "crypto": "^1.0.1",
+    "paillier-bigint": "^3.4.3"
   }
 }

@@ -1,4 +1,4 @@
 private/*.json
 public/*.json
 node_modules
-.env
+*/.env
