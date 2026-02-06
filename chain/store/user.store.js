@@ -111,3 +111,15 @@ export function storeUserPath(id, encryptedPath) {
     console.log(`Path verified and stored for user ${id}`);
   }
 }
+
+export function storeUserBlindPath(id, blindPath) {
+  const user = userStore.get(id);
+  if (user) {
+    if (!user.verifiedBlindPaths) {
+      user.verifiedBlindPaths = [];
+    }
+    user.verifiedBlindPaths.push(blindPath);
+    userStore.set(id, user);
+    console.log(`Blind path stored for user ${id} (total: ${user.verifiedBlindPaths.length})`);
+  }
+}

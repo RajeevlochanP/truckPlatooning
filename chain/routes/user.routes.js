@@ -6,6 +6,7 @@ import {
   getUserDetail,
   getUserCount,
   hasUser,
+  getUser,
 } from '../store/index.js';
 
 const router = Router();
@@ -75,6 +76,37 @@ router.get('/users/:id', (req, res) => {
   }
 
   res.json({ success: true, ...detail });
+});
+
+/**
+ * GET /users/:id/path
+ * Get the stored encrypted path for a user
+ */
+router.get('/users/:id/path', (req, res) => {
+  const { id } = req.params;
+
+  if (!hasUser(id)) {
+    return res.status(404).json({
+      success: false,
+      error: `User '${id}' not found`,
+    });
+  }
+
+  const detail = getUserDetail(id);
+  if (!detail || !detail.hasEncryptedPath) {
+    return res.status(404).json({
+      success: false,
+      error: `User '${id}' does not have a stored encrypted path`,
+    });
+  }
+
+  const user = getUser(id);
+  res.json({
+    success: true,
+    id,
+    encryptedPath: user.encryptedPath,
+    pathLength: user.encryptedPath.length,
+  });
 });
 
 /**

@@ -21,37 +21,40 @@ app.get("/", (req, res) => {
   res.json({
     status: "ok",
     message: config.appName,
-    verifierKeySet: isVerifierKeySet(),
     registeredUsers: getUserCount(),
     endpoints: {
-      "/verifier-key": "POST (once) - Set global verifier key | GET - Status",
-      "/register": "POST - Register user: { authPks, pubKey, id? }",
-      "/users": "GET - List all registered users",
-      "/users/:id": "GET/DELETE - Get or unregister user",
-      "/verify/path": "POST - Verify encrypted path proofs",
-      "/verify/auth": "POST - Verify BLS auth proof",
+      "POST /register":            "Register user: { authPks, pubKey, id? }",
+      "GET  /users":               "List all registered users",
+      "GET  /users/:id":           "Get user details",
+      "GET  /users/:id/path":      "Get user's stored encrypted path",
+      "DELETE /users/:id":         "Unregister a user",
+      "POST /verify/path":         "Verify encrypted path proofs & store path",
+      "POST /verify/auth":         "Verify BLS auth proof",
+      "POST /verify/cBlindPath":   "Verify blind path proofs & store if matched",
     },
   });
 });
 
 // Mount routes
-app.use("/verify", verifyRoutes); // /verify/path, /verify/auth
-app.use(userRoutes);          // /register, /users, /users/:id
+app.use("/verify", verifyRoutes); // /verify/path, /verify/auth, /verify/cBlindPath
+app.use(userRoutes);          // /register, /users, /users/:id, /users/:id/path
 
-// Initialize ZoKrates and start server
+// start server
 async function start() {
   try {
     app.listen(config.port, () => {
       console.log(`\n${config.appName}`);
       console.log(`Running on http://localhost:${config.port}\n`);
       console.log("Endpoints:");
-      console.log("  GET  /              - Health check & info");
-      console.log("  POST /register      - Register user: { authPks, pubKey, id? }");
-      console.log("  GET  /users         - List all registered users");
-      console.log("  GET  /users/:id     - Get user details");
-      console.log("  DELETE /users/:id   - Unregister a user");
-      console.log("  POST /verify/path   - Verify encrypted path proofs");
-      console.log("  POST /verify/auth   - Verify BLS auth proof\n");
+      console.log("  GET    /                    - Health check & info");
+      console.log("  POST   /register            - Register user: { authPks, pubKey, id? }");
+      console.log("  GET    /users               - List all registered users");
+      console.log("  GET    /users/:id            - Get user details");
+      console.log("  GET    /users/:id/path       - Get user's stored encrypted path");
+      console.log("  DELETE /users/:id            - Unregister a user");
+      console.log("  POST   /verify/path          - Verify encrypted path proofs & store path");
+      console.log("  POST   /verify/auth          - Verify BLS auth proof");
+      console.log("  POST   /verify/cBlindPath    - Verify blind path proofs & store if matched\n");
     });
   } catch (err) {
     console.error("Failed to initialize:", err);

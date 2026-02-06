@@ -1,6 +1,9 @@
 import { Router } from 'express';
-import { verifyAuthProof,verifyPathProofs } from '../helpers/index.js';
-import { getUser, hasUser, storeUserPath } from '../store/index.js';
+import { verifyAuthProof, verifyPathProofs, verifyBlindMatch } from '../helpers/index.js';
+import { getUser, hasUser, storeUserPath, storeUserBlindPath } from '../store/index.js';
+import config from '../config/index.js';
+
+const { thresholdPathLength: threshold } = config;
 
 const router = Router();
 
@@ -128,5 +131,106 @@ router.post('/auth', async (req, res) => {
     }
   }
 );
+
+router.post('/cBlindPath', async (req, res) => {
+    try {
+        const id = req.body.id?.toString();
+        const blindPath = req.body.blindPath; // array of { C_blind, proof }
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                error: "Missing required field: id",
+            });
+        }
+
+        if (!hasUser(id)) {
+            return res.status(404).json({
+                success: false,
+                error: `User '${id}' not found. Register first via POST /register`,
+            });
+        }
+
+        if (!blindPath || !Array.isArray(blindPath)) {
+            return res.status(400).json({
+                success: false,
+                error: "Missing or invalid blindPath array. Expected array of { C_blind, proof }",
+            });
+        }
+
+        const user = getUser(id);
+
+        if (!user.pubKey) {
+            return res.status(400).json({
+                success: false,
+                error: "User does not have a pubKey registered",
+            });
+        }
+
+        if (!user.encryptedPath || !Array.isArray(user.encryptedPath)) {
+            return res.status(400).json({
+                success: false,
+                error: "User does not have a stored encrypted path. Submit path first via POST /path",
+            });
+        }
+
+        // if (blindPath.length > user.encryptedPath.length) {
+        //     return res.status(400).json({
+        //         success: false,
+        //         error: `blindPath length (${blindPath.length}) exceeds stored encryptedPath length (${user.encryptedPath.length})`,
+        //     });
+        // }
+
+        // if (isNaN(threshold) || threshold < 1) {
+        //     return res.status(400).json({
+        //         success: false,
+        //         error: "threshold must be a positive integer",
+        //     });
+        // }
+
+        // Verify each blind match proof against the stored encrypted path (prefix)
+        const results = [];
+        let matched = 0;
+
+        for (let i = 0; i < blindPath.length; i++) {
+            const { C_blind, proof } = blindPath[i];
+
+            if (!C_blind || !proof || !proof.A || !proof.e || !proof.z_alpha || !proof.z_beta || !proof.z_gamma) {
+                results.push({ index: i, valid: false, error: "Missing C_blind or proof fields" });
+                break; // prefix broken
+            }
+
+            const valid = verifyBlindMatch(user.pubKey, user.encryptedPath[i], C_blind, proof);
+            results.push({ index: i, valid });
+            if (valid) matched++;
+        }
+
+        const verified = (matched === blindPath.length);
+
+        if (verified) {
+            storeUserBlindPath(id, blindPath.map(entry => entry.C_blind));
+        }
+
+        res.json({
+            success: true,
+            verified,
+            id,
+            matched,
+            threshold,
+            totalSegments: blindPath.length,
+            results,
+            message: verified
+                ? `matched (${matched}/${blindPath.length}) Verified.`
+                : `matched (${matched}/${blindPath.length}) Rejected.`,
+        });
+    } catch (error) {
+        console.error("Blind path verification error:", error);
+        res.status(500).json({
+            success: false,
+            verified: false,
+            error: error.message,
+        });
+    }
+});
 
 export default router;
