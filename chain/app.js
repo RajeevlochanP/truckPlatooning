@@ -1,7 +1,3 @@
-/**
- * Truck Platooning Verifiable Computation Chain
- * Main Application Entry Point
- */
 import express from "express";
 import morgan from "morgan";
 
@@ -12,11 +8,9 @@ import * as paillierBigint from "paillier-bigint";
 
 const app = express();
 
-// Middleware
 app.use(express.json());
 app.use(morgan("dev"));
 
-// Health check / root endpoint
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -35,11 +29,9 @@ app.get("/", (req, res) => {
   });
 });
 
-// Mount routes
-app.use("/verify", verifyRoutes); // /verify/path, /verify/auth, /verify/cBlindPath
-app.use(userRoutes);          // /register, /users, /users/:id, /users/:id/path
+app.use("/verify", verifyRoutes);
+app.use(userRoutes);
 
-// start server
 async function start() {
   try {
     app.listen(config.port, () => {
