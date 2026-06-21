@@ -1,0 +1,63 @@
+truckPlatooning/
+├─ chain/
+│  ├─ config/
+│  │  └─ index.js
+│  ├─ helpers/
+│  │  ├─ bls.helper.js
+│  │  ├─ cBlindPaillier.helper.js
+│  │  ├─ index.js
+│  │  └─ paillier.helper.js
+│  ├─ routes/
+│  │  ├─ index.js
+│  │  ├─ user.routes.js
+│  │  └─ verify.routes.js
+│  ├─ store/
+│  │  ├─ index.js
+│  │  └─ user.store.js
+│  ├─ app.js
+│  ├─ package-lock.json
+│  └─ package.json
+├─ previousNotBeingUsed/
+│  ├─ bls_test.js
+│  ├─ compilation.js
+│  ├─ package-lock.json
+│  ├─ package.json
+│  ├─ prover.js
+│  ├─ script.sh
+│  ├─ setup.js
+│  └─ verifier.js
+├─ private/
+│  ├─ auth_sk.json
+│  ├─ paillier_sk.json
+│  ├─ path.js
+│  ├─ prover_key.json
+│  └─ witness.json
+├─ prover/
+│  ├─ helpers/
+│  │  ├─ auth.helper.js
+│  │  ├─ cBlind_path.helper.js
+│  │  └─ path.helper.js
+│  ├─ package-lock.json
+│  ├─ package.json
+│  ├─ parameters.js
+│  └─ prover.js
+├─ public/
+│  ├─ auth_pk.json
+│  ├─ auth_proof.json
+│  ├─ encrypted_path.json
+│  ├─ graph.js
+│  ├─ output.json
+│  ├─ paillier_pk.json
+│  ├─ path.zok
+│  ├─ proof.json
+│  ├─ verifier_key.json
+│  └─ zk_artifacts.json
+├─ setup/
+│  ├─ keyGen.js
+│  ├─ package-lock.json
+│  ├─ package.json
+│  └─ parameters.js
+├─ .gitignore
+├─ Aggregated_Zero-Knowledge_Proof_and_Blockchain-Empowered_Authentication_for_Autonomous_Truck_Platooning.pdf
+├─ demo.txt
+└─ README.md
