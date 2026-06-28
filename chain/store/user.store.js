@@ -112,14 +112,42 @@ export function storeUserPath(id, encryptedPath) {
   }
 }
 
+// export function storeUserBlindPath(id, blindPath) {
+//   const user = userStore.get(id);
+//   if (user) {
+//     if (!user.verifiedBlindPaths) {
+//       user.verifiedBlindPaths = [];
+//     }
+//     user.verifiedBlindPaths.push(blindPath);
+//     userStore.set(id, user);
+//     console.log(`Blind path stored for user ${id} (total: ${user.verifiedBlindPaths.length})`);
+//   }
+// }
+
+// Add a new structure to track platoons
+const platoons = {}; 
+
 export function storeUserBlindPath(id, blindPath) {
-  const user = userStore.get(id);
-  if (user) {
-    if (!user.verifiedBlindPaths) {
-      user.verifiedBlindPaths = [];
+    if (users[id]) {
+        users[id].blindPath = blindPath;
+        users[id].hasBlindPath = true;
     }
-    user.verifiedBlindPaths.push(blindPath);
-    userStore.set(id, user);
-    console.log(`Blind path stored for user ${id} (total: ${user.verifiedBlindPaths.length})`);
-  }
 }
+
+export function createPlatoon(leaderId) {
+    if (!platoons[leaderId]) platoons[leaderId] = [];
+}
+
+export function addToPlatoon(leaderId, memberId) {
+    if (!platoons[leaderId]) createPlatoon(leaderId);
+    if (!platoons[leaderId].includes(memberId)) platoons[leaderId].push(memberId);
+}
+
+export function getPlatoon(leaderId) {
+    return platoons[leaderId] || [];
+}
+// Don't forget to export these at the bottom of the file!
+
+// Make sure to export the new functions!
+// Add to your existing export list at the bottom:
+// export { ..., storeUserBlindPath, createPlatoon, addToPlatoon, getPlatoon }
