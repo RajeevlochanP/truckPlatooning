@@ -127,4 +127,28 @@ router.delete('/users/:id', (req, res) => {
   });
 });
 
+/**
+ * GET /users/:id/blindPath
+ * Get the stored blind path for a user (Requested by Platoon Leader)
+ */
+router.get('/users/:id/blindPath', (req, res) => {
+  const { id } = req.params;
+
+  if (!hasUser(id)) {
+    return res.status(404).json({ success: false, error: `User '${id}' not found` });
+  }
+
+  const user = getUser(id);
+  if (!user.hasBlindPath || !user.blindPath) {
+    return res.status(404).json({ success: false, error: `User '${id}' does not have a stored blind path` });
+  }
+
+  res.json({
+    success: true,
+    id,
+    blindPath: user.blindPath, // Array of C_blind strings
+    pathLength: user.blindPath.length,
+  });
+});
+
 export default router;
