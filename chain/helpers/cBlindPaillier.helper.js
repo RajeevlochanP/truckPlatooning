@@ -98,3 +98,55 @@ export function verifyBlindMatch(pubKey, C_plat, C_blind_Str, proof) {
         return false;
     }
 }
+
+
+export function generateFinalChallenge(n, C_blind, C_final, A_plat) {
+    const hash = crypto.createHash('sha256');
+    hash.update(n.toString());
+    hash.update(C_blind.toString());
+    hash.update(C_final.toString());
+    hash.update(A_plat.toString());
+    return BigInt('0x' + hash.digest('hex'));
+}
+
+export function verifyFinalMatch(pubKey, C_blind_str, finalPayload) {
+    const n = BigInt(pubKey.n.toString());
+    const g = BigInt(pubKey.g.toString());
+    const n2 = n * n;
+
+    const C_blind = BigInt(C_blind_str);
+    const m_true = BigInt(finalPayload.m_true);
+    const R = BigInt(finalPayload.R);
+    const C_final = BigInt(finalPayload.C_final);
+    
+    const A_plat = BigInt(finalPayload.proof.A_plat);
+    const e_plat = BigInt(finalPayload.proof.e_plat);
+    const z_plat = BigInt(finalPayload.proof.z_plat);
+
+    // 1. Recompute Challenge
+    const e_check = generateFinalChallenge(n, C_blind, C_final, A_plat);
+    if (e_plat !== e_check) {
+        console.error("Final Hash Mismatch: Integrity check failed.");
+        return false;
+    }
+
+    // 2. Verify ZKP Exponentiation Binding (C_blind^z_plat == A_plat * C_final^e_plat)
+    const lhs_bind = modPow(C_blind, z_plat, n2);
+    const rhs_bind = (A_plat * modPow(C_final, e_plat, n2)) % n2;
+    if (lhs_bind !== rhs_bind) {
+        console.error("ZKP Binding Verification Failed.");
+        return false;
+    }
+
+    // 3. Verify Deterministic Decryption (g^m_true * R^N == C_final)
+    const lhs_dec1 = modPow(g, m_true, n2);
+    const lhs_dec2 = modPow(R, n, n2);
+    const lhs_dec = (lhs_dec1 * lhs_dec2) % n2;
+    
+    if (lhs_dec !== C_final) {
+        console.error("Deterministic Decryption Verification Failed.");
+        return false;
+    }
+
+    return true;
+}
