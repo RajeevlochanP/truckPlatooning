@@ -1,33 +1,15 @@
 import * as crypto from 'crypto';
-export function generateChallenge(n, C_plat, C_blind, A) {
-    const hash = crypto.createHash('sha256');
-    
-    // Feed inputs deterministically (Order matters!)
-    hash.update(n.toString());
-    hash.update(C_plat.toString());
-    hash.update(C_blind.toString());
-    hash.update(A.toString());
-    
-    // Get hex digest and convert to BigInt
-    const hexDigest = hash.digest('hex');
-    return BigInt('0x' + hexDigest);
-}
 
 export function modPow(base, exp, mod) {
     let b = BigInt(base) % BigInt(mod);
     let e = BigInt(exp);
     const m = BigInt(mod);
     let result = 1n;
-    
-    // Handle negative base
     if (b < 0n) b += m;
-
-    // Handle negative exponent (Modular Inverse)
     if (e < 0n) {
         e = -e;
         b = modInverse(b, m); 
     }
-
     while (e > 0n) {
         if (e % 2n === 1n) result = (result * b) % m;
         b = (b * b) % m;
@@ -39,66 +21,91 @@ export function modPow(base, exp, mod) {
 export function modInverse(a, m) {
     let [old_r, r] = [BigInt(a), BigInt(m)];
     let [old_s, s] = [1n, 0n];
-    
     while (r !== 0n) {
         const quotient = old_r / r;
         [old_r, r] = [r, old_r - quotient * r];
         [old_s, s] = [s, old_s - quotient * s];
     }
-    
-    // If gcd != 1, no inverse
     if (old_r > 1n) throw new Error('Inverse does not exist');
     return (old_s % BigInt(m) + BigInt(m)) % BigInt(m);
 }
 
-export function verifyBlindMatch(pubKey, C_plat, C_blind_Str, proof) {
-    const n = BigInt(pubKey.n.toString());
-    const g = BigInt(pubKey.g.toString());
-    const n2 = n * n;
+export function generateChallenge(C_A, C_L, C_beta, C_blind, A1, A2, A3) {
+    const hash = crypto.createHash('sha256');
+    hash.update(C_A.toString());
+    hash.update(C_L.toString());
+    hash.update(C_beta.toString());
+    hash.update(C_blind.toString());
+    hash.update(A1.toString());
+    hash.update(A2.toString());
+    hash.update(A3.toString());
+    return BigInt('0x' + hash.digest('hex'));
+}
 
-    // Convert inputs to BigInt safely
-    const C_p = BigInt(C_plat);
-    const C_blind = BigInt(C_blind_Str);
-    const A = BigInt(proof.A);
+export function verifyBlindMatch(pubKeyLeader, pubKeyApplicant, C_L_str, C_A_str, C_beta_str, C_blind_str, proof) {
+    const N_L = BigInt(pubKeyLeader.n);
+    const g_L = BigInt(pubKeyLeader.g);
+    const N_L2 = N_L * N_L;
+
+    const N_A = BigInt(pubKeyApplicant.n);
+    const g_A = BigInt(pubKeyApplicant.g);
+    const N_A2 = N_A * N_A;
+
+    const C_L = BigInt(C_L_str);
+    const C_A = BigInt(C_A_str);
+    const C_beta = BigInt(C_beta_str);
+    const C_blind = BigInt(C_blind_str);
+
+    const A1 = BigInt(proof.A1);
+    const A2 = BigInt(proof.A2);
+    const A3 = BigInt(proof.A3);
     const e = BigInt(proof.e);
     const z_alpha = BigInt(proof.z_alpha);
-    const z_beta  = BigInt(proof.z_beta);
-    const z_gamma = BigInt(proof.z_gamma);
+    const z_beta = BigInt(proof.z_beta);
+    const z1 = BigInt(proof.z1);
+    const z2 = BigInt(proof.z2);
+    const z3 = BigInt(proof.z3);
 
     // 1. Recompute Challenge
-    const e_check = generateChallenge(n, C_p, C_blind, A);
-    
+    const e_check = generateChallenge(C_A, C_L, C_beta, C_blind, A1, A2, A3);
     if (e !== e_check) {
         console.error("Hash Mismatch: Integrity check failed.");
         return false;
     }
 
-    // 2. Verify Equation
-    // Check: C_plat^z_alpha * g^z_beta * z_gamma^N == A * C_blind^e
-    
-    // LHS Terms
-    const lhs1 = modPow(C_p, z_alpha, n2);
-    const lhs2 = modPow(g, z_beta, n2);      // Handles negative z_beta internally
-    const lhs3 = modPow(z_gamma, n, n2);
-    
-    const LHS = (lhs1 * lhs2 * lhs3) % n2;
-
-    // RHS Terms
-    const rhs1 = A % n2;
-    const rhs2 = modPow(C_blind, e, n2);
-    
-    const RHS = (rhs1 * rhs2) % n2;
-
-    // Final Comparison
-    if (LHS === RHS) {
-        console.log("Proof Verified: Blind Calculation Correct.");
-        return true;
-    } else {
-        console.error("Mathematical Verification Failed.");
+    // 2. Verify Equation 1: z_1^{N_A} == A_1 * C_beta^e * C_A^{z_alpha} mod N_A^2
+    const eq1_lhs = modPow(z1, N_A, N_A2);
+    const eq1_rhs_1 = (A1 * modPow(C_beta, e, N_A2)) % N_A2;
+    const eq1_rhs = (eq1_rhs_1 * modPow(C_A, z_alpha, N_A2)) % N_A2;
+    if (eq1_lhs !== eq1_rhs) {
+        console.error("Equation 1 Verification Failed.");
         return false;
     }
-}
 
+    // 3. Verify Equation 2: g_A^{z_beta} * z_2^{N_A} == A_2 * C_beta^e mod N_A^2
+    const eq2_lhs_1 = modPow(g_A, z_beta, N_A2);
+    const eq2_lhs_2 = modPow(z2, N_A, N_A2);
+    const eq2_lhs = (eq2_lhs_1 * eq2_lhs_2) % N_A2;
+    const eq2_rhs = (A2 * modPow(C_beta, e, N_A2)) % N_A2;
+    if (eq2_lhs !== eq2_rhs) {
+        console.error("Equation 2 Verification Failed.");
+        return false;
+    }
+
+    // 4. Verify Equation 3: C_L^{z_alpha} * g_L^{z_beta} * z_3^{N_L} == A_3 * C_blind^e mod N_L^2
+    const eq3_lhs_1 = modPow(C_L, z_alpha, N_L2);
+    const eq3_lhs_2 = modPow(g_L, z_beta, N_L2);
+    const eq3_lhs_3 = modPow(z3, N_L, N_L2);
+    const eq3_lhs = (((eq3_lhs_1 * eq3_lhs_2) % N_L2) * eq3_lhs_3) % N_L2;
+    const eq3_rhs = (A3 * modPow(C_blind, e, N_L2)) % N_L2;
+    if (eq3_lhs !== eq3_rhs) {
+        console.error("Equation 3 Verification Failed.");
+        return false;
+    }
+
+    console.log("Proof Verified: Blind Calculation Correct.");
+    return true;
+}
 
 export function generateFinalChallenge(n, C_blind, C_final, A_plat) {
     const hash = crypto.createHash('sha256');

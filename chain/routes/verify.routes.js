@@ -151,14 +151,20 @@ router.post('/cBlindPath', async (req, res) => {
         if (!leader.encryptedPath) {
             return res.status(400).json({ success: false, error: "Leader has no encrypted path" });
         }
+        if (!applicant.encryptedPath) {
+            return res.status(400).json({ success: false, error: "Applicant has no encrypted path. Must run Phase 1 Commit first." });
+        }
 
         const results = [];
         let matched = 0;
 
         for (let i = 0; i < blindPath.length; i++) {
-            const { C_blind, proof } = blindPath[i];
-            // CRITICAL: We use the LEADER's pubKey and LEADER's encrypted path!
-            const valid = verifyBlindMatch(leader.pubKey, leader.encryptedPath[i], C_blind, proof);
+            const { C_beta, C_blind, proof } = blindPath[i];
+            const C_L = leader.encryptedPath[i];
+            const C_A = applicant.encryptedPath[i];
+            
+            // Verifying 3 concurrent equations
+            const valid = verifyBlindMatch(leader.pubKey, applicant.pubKey, C_L, C_A, C_beta, C_blind, proof);
             results.push({ index: i, valid });
             if (valid) matched++;
         }

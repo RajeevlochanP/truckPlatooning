@@ -1,13 +1,15 @@
 import crypto from 'crypto';
-import bigInt from 'big-integer';
 
-// Re-implementing modPow and modInverse locally for the prover
-function modPow(base, exp, mod) {
+export function modPow(base, exp, mod) {
     let b = BigInt(base) % BigInt(mod);
     let e = BigInt(exp);
     const m = BigInt(mod);
     let result = 1n;
     if (b < 0n) b += m;
+    if (e < 0n) {
+        e = -e;
+        b = modInverse(b, m);
+    }
     while (e > 0n) {
         if (e % 2n === 1n) result = (result * b) % m;
         b = (b * b) % m;
@@ -16,7 +18,7 @@ function modPow(base, exp, mod) {
     return result;
 }
 
-function modInverse(a, m) {
+export function modInverse(a, m) {
     let [old_r, r] = [BigInt(a), BigInt(m)];
     let [old_s, s] = [1n, 0n];
     while (r !== 0n) {
@@ -27,8 +29,18 @@ function modInverse(a, m) {
     return (old_s % BigInt(m) + BigInt(m)) % BigInt(m);
 }
 
-function randBetween(min, max) {
-    return bigInt.randBetween(min, max).toString();
+export function randBetween(min, max) {
+    const minBn = BigInt(min);
+    const maxBn = BigInt(max);
+    const range = maxBn - minBn;
+    const hex = range.toString(16);
+    const byteLength = Math.ceil(hex.length / 2);
+    let randomNum;
+    do {
+        const buffer = crypto.randomBytes(byteLength);
+        randomNum = BigInt('0x' + buffer.toString('hex'));
+    } while (randomNum >= range);
+    return randomNum + minBn;
 }
 
 export function generateDoubleBlindProof(pubKeyData, privKeyData, C_blind_str) {
@@ -40,7 +52,7 @@ export function generateDoubleBlindProof(pubKeyData, privKeyData, C_blind_str) {
     const C_blind = BigInt(C_blind_str);
 
     // 1. Double-Blinding
-    const r_P = BigInt(randBetween(bigInt(1), bigInt(n.toString())));
+    const r_P = randBetween(1n, n);
     const C_final = modPow(C_blind, r_P, n2);
 
     // 2. Decryption
@@ -61,7 +73,7 @@ export function generateDoubleBlindProof(pubKeyData, privKeyData, C_blind_str) {
     const R = modPow(C_rand % n, n_inv_lambda, n);
 
     // 4. Generate ZKP (Algorithm 3)
-    const s = BigInt(randBetween(bigInt(1), bigInt((n2 / 2n).toString())));
+    const s = randBetween(1n, n2 / 2n);
     const A_plat = modPow(C_blind, s, n2);
 
     const hash = crypto.createHash('sha256');

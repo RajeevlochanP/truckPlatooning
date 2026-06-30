@@ -128,9 +128,11 @@ export function storeUserPath(id, encryptedPath) {
 const platoons = {}; 
 
 export function storeUserBlindPath(id, blindPath) {
-    if (users[id]) {
-        users[id].blindPath = blindPath;
-        users[id].hasBlindPath = true;
+    const user = userStore.get(id);
+    if (user) {
+        user.blindPath = blindPath;
+        user.hasBlindPath = true;
+        userStore.set(id, user);
     }
 }
 

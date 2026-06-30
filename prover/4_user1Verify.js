@@ -1,11 +1,11 @@
 import fs from "fs/promises";
-import { generateDoubleBlindProof } from "./helpers/platoon.helper.js";
+import { generateDoubleBlindProof } from "../chain/helpers/platoon.helper.js";
 
 console.log("\n--- User 1 (PL) Verifying Applicant 2 ---");
 
 // User 1 uses their OWN keys to decrypt
-const pubKeyData = JSON.parse(await fs.readFile("../public/user1_paillier_pk.json", "utf8"));
-const privKeyData = JSON.parse(await fs.readFile("../private/user1_paillier_sk.json", "utf8"));
+const pubKeyData = JSON.parse(await fs.readFile("../public/paillier_pk.json", "utf8"));
+const privKeyData = JSON.parse(await fs.readFile("../private/paillier_sk.json", "utf8"));
 
 console.log("Fetching User 2's Blind Path from chain...");
 const fetchRes = await fetch(`http://localhost:3000/users/2/blindPath`);

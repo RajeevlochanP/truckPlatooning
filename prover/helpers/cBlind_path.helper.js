@@ -1,108 +1,152 @@
 import * as crypto from 'crypto';
-import bigInt from 'big-integer';
-import { randBetween } from '../helpers/path.helper.js';
 
 export function modPow(base, exp, mod) {
-    let b = base % mod;
-    let e = exp;
+    let b = BigInt(base) % BigInt(mod);
+    let e = BigInt(exp);
+    const m = BigInt(mod);
     let result = 1n;
-    
-    // Handle negative base
-    if (b < 0n) b += mod;
-
-    // Handle negative exponent (Modular Inverse)
+    if (b < 0n) b += m;
     if (e < 0n) {
-        // Simplified inversion for N^2 (Paillier) where gcd(base, mod) is likely 1
-        // In prod, use a proper Extended Euclidean Algo function
-        // For g=N+1, inverse is 1-N. For general cases, this placeholder warns:
         e = -e;
-        b = modInverse(b, mod); 
+        b = modInverse(b, m); 
     }
-
     while (e > 0n) {
-        if (e % 2n === 1n) result = (result * b) % mod;
-        b = (b * b) % mod;
+        if (e % 2n === 1n) result = (result * b) % m;
+        b = (b * b) % m;
         e /= 2n;
     }
     return result;
 }
 
 export function modInverse(a, m) {
-    let [old_r, r] = [a, m];
+    let [old_r, r] = [BigInt(a), BigInt(m)];
     let [old_s, s] = [1n, 0n];
-    
     while (r !== 0n) {
         const quotient = old_r / r;
         [old_r, r] = [r, old_r - quotient * r];
         [old_s, s] = [s, old_s - quotient * s];
     }
-    
-    if (old_r > 1n) throw new Error('Inverse does not exist');
-    return (old_s % m + m) % m;
+    return (old_s % BigInt(m) + BigInt(m)) % BigInt(m);
 }
 
-export function generateChallenge(n, C_plat, C_blind, A) {
+export function randBetween(min, max) {
+    const minBn = BigInt(min);
+    const maxBn = BigInt(max);
+    const range = maxBn - minBn;
+    const hex = range.toString(16);
+    const byteLength = Math.ceil(hex.length / 2);
+    let randomNum;
+    do {
+        const buffer = crypto.randomBytes(byteLength);
+        randomNum = BigInt('0x' + buffer.toString('hex'));
+    } while (randomNum >= range);
+    return randomNum + minBn;
+}
+
+export function generateChallenge(C_A, C_L, C_beta, C_blind, A1, A2, A3) {
     const hash = crypto.createHash('sha256');
-    
-    hash.update(n.toString());
-    hash.update(C_plat.toString());
+    hash.update(C_A.toString());
+    hash.update(C_L.toString());
+    hash.update(C_beta.toString());
     hash.update(C_blind.toString());
-    hash.update(A.toString());
-    
+    hash.update(A1.toString());
+    hash.update(A2.toString());
+    hash.update(A3.toString());
     const hexDigest = hash.digest('hex');
     return BigInt('0x' + hexDigest);
 }
 
-export function proverBlindMatch(pubKey, C_plat, alpha, beta, gamma) {
-    const n = BigInt(pubKey.n);
-    const g = BigInt(pubKey.g);
-    const C_p = BigInt(C_plat);
-    const a = BigInt(alpha);
-    const b = BigInt(beta);
-    const gam = BigInt(gamma);
+export function proverBlindMatch(pubKeyLeader, pubKeyApplicant, C_L_str, C_A_str, r_A_str, m_A_str) {
+    const N_L = BigInt(pubKeyLeader.n);
+    const g_L = BigInt(pubKeyLeader.g);
+    const N_L2 = N_L * N_L;
     
-    const n2 = n * n;
+    const N_A = BigInt(pubKeyApplicant.n);
+    const g_A = BigInt(pubKeyApplicant.g);
+    const N_A2 = N_A * N_A;
 
-    // 1. Compute C_blind (The result of the operation)
-    // C_blind = C_plat^alpha * g^beta * gamma^N
-    const term1 = modPow(C_p, a, n2);
-    const term2 = modPow(g, b, n2);
-    const term3 = modPow(gam, n, n2);
-    const C_blind = (term1 * term2 * term3) % n2;
+    const C_L = BigInt(C_L_str);
+    const C_A = BigInt(C_A_str);
+    const r_A = BigInt(r_A_str);
+    const m_A = BigInt(m_A_str);
 
-    // 2. Commitment Phase
-    const r_alpha = BigInt(randBetween(bigInt(0), bigInt(n.toString())).toString());
-    const r_beta  = BigInt(randBetween(bigInt(0), bigInt(n.toString())).toString());
-    const r_gamma = BigInt(randBetween(bigInt(1), bigInt(n.toString())).toString());
+    // 1. Sample alpha, gamma, r_u
+    const alpha = randBetween(1n, N_L);
+    const gamma = randBetween(1n, N_L);
+    const r_u = randBetween(1n, N_A);
 
-    // A = C_plat^r_alpha * g^r_beta * r_gamma^N mod N^2
-    const A1 = modPow(C_p, r_alpha, n2);
-    const A2 = modPow(g, r_beta, n2);
-    const A3 = modPow(r_gamma, n, n2);
-    const A = (A1 * A2 * A3) % n2;
+    // 2. Compute beta = -m_A * alpha (Negative BigInt over Z)
+    const beta = -(m_A * alpha);
 
-    // 3. Challenge Phase
-    const e = generateChallenge(n, C_p, C_blind, A);
+    // 3. Compute r_v = r_A^(-alpha) * r_u mod N_A
+    const r_A_inv_alpha = modPow(r_A, -alpha, N_A);
+    const r_v = (r_A_inv_alpha * r_u) % N_A;
 
-    // 4. Response Phase
-    // z_alpha = r_alpha + e * alpha
-    const z_alpha = r_alpha + (e * a);
+    // 4. Compute C_beta = C_A^(-alpha) * r_u^(N_A) mod N_A^2
+    const c_a_inv_alpha = modPow(C_A, -alpha, N_A2);
+    const r_u_N_A = modPow(r_u, N_A, N_A2);
+    const C_beta = (c_a_inv_alpha * r_u_N_A) % N_A2;
 
-    // z_beta = r_beta + e * beta 
-    const z_beta = r_beta + (e * b);
+    // 5. Compute C_blind = C_L^alpha * g_L^beta * gamma^(N_L) mod N_L^2
+    const c_l_alpha = modPow(C_L, alpha, N_L2);
+    const g_l_beta = modPow(g_L, beta, N_L2);
+    const gamma_N_L = modPow(gamma, N_L, N_L2);
+    const C_blind = (((c_l_alpha * g_l_beta) % N_L2) * gamma_N_L) % N_L2;
 
-    // z_gamma = r_gamma * gamma^e mod N
-    const gamma_e = modPow(gam, e, n);
-    const z_gamma = (r_gamma * gamma_e) % n;
+    // --- ZKP pi_eval Generation ---
+    // Sample r_alpha in [0, 2^128 * N_L], r_beta in [0, 2^128 * N_A]
+    const r_alpha_max = N_L * (1n << 128n);
+    const r_beta_max = N_A * (1n << 128n);
+    
+    const r_alpha = randBetween(0n, r_alpha_max);
+    const r_beta = randBetween(0n, r_beta_max);
+
+    // Sample r_s1, r_s2 in Z*_N_A, r_s3 in Z*_N_L
+    const r_s1 = randBetween(1n, N_A);
+    const r_s2 = randBetween(1n, N_A);
+    const r_s3 = randBetween(1n, N_L);
+
+    // A1 = C_A^(-r_alpha) * r_s1^(N_A) mod N_A^2
+    const a1_term1 = modPow(C_A, -r_alpha, N_A2);
+    const a1_term2 = modPow(r_s1, N_A, N_A2);
+    const A1 = (a1_term1 * a1_term2) % N_A2;
+
+    // A2 = g_A^(r_beta) * r_s2^(N_A) mod N_A^2
+    const a2_term1 = modPow(g_A, r_beta, N_A2);
+    const a2_term2 = modPow(r_s2, N_A, N_A2);
+    const A2 = (a2_term1 * a2_term2) % N_A2;
+
+    // A3 = C_L^(r_alpha) * g_L^(r_beta) * r_s3^(N_L) mod N_L^2
+    const a3_term1 = modPow(C_L, r_alpha, N_L2);
+    const a3_term2 = modPow(g_L, r_beta, N_L2);
+    const a3_term3 = modPow(r_s3, N_L, N_L2);
+    const A3 = (((a3_term1 * a3_term2) % N_L2) * a3_term3) % N_L2;
+
+    // Challenge e
+    const e = generateChallenge(C_A, C_L, C_beta, C_blind, A1, A2, A3);
+
+    // Integer Responses (over Z)
+    const z_alpha = r_alpha + (e * alpha);
+    const z_beta = r_beta + (e * beta);
+
+    // Modulo Responses
+    const z1 = (r_s1 * modPow(r_u, e, N_A)) % N_A;
+    const z2 = (r_s2 * modPow(r_v, e, N_A)) % N_A;
+    const z3 = (r_s3 * modPow(gamma, e, N_L)) % N_L;
 
     return {
+        C_beta: C_beta.toString(),
         C_blind: C_blind.toString(),
         proof: {
-            A: A.toString(),
+            A1: A1.toString(),
+            A2: A2.toString(),
+            A3: A3.toString(),
             e: e.toString(),
             z_alpha: z_alpha.toString(),
             z_beta: z_beta.toString(),
-            z_gamma: z_gamma.toString()
+            z1: z1.toString(),
+            z2: z2.toString(),
+            z3: z3.toString()
         }
     };
 }
