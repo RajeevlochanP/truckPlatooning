@@ -1,8 +1,8 @@
 import fs from "fs/promises";
 
 async function registerUser(userId) {
-    const authPks = JSON.parse(await fs.readFile(`../public/auth_pk.json`, "utf8"));
-    const pubKey = JSON.parse(await fs.readFile(`../public/paillier_pk.json`, "utf8"));
+    const authPks = JSON.parse(await fs.readFile(`../public/user${userId}_auth_pk.json`, "utf8"));
+    const pubKey = JSON.parse(await fs.readFile(`../public/user${userId}_paillier_pk.json`, "utf8"));
 
     const response = await fetch("http://localhost:3000/register", {
         method: "POST",

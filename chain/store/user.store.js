@@ -148,8 +148,3 @@ export function addToPlatoon(leaderId, memberId) {
 export function getPlatoon(leaderId) {
     return platoons[leaderId] || [];
 }
-// Don't forget to export these at the bottom of the file!
-
-// Make sure to export the new functions!
-// Add to your existing export list at the bottom:
-// export { ..., storeUserBlindPath, createPlatoon, addToPlatoon, getPlatoon }

@@ -6,7 +6,7 @@ import { priv_path_2 } from "../private/path.js"; // User 2's path
 console.log("\n--- User 2 (Applicant) Committing Path ---");
 
 // User 2 encrypts with their OWN public key
-const pubKeyData = JSON.parse(await fs.readFile("../public/paillier_pk.json", "utf8"));
+const pubKeyData = JSON.parse(await fs.readFile("../public/user2_paillier_pk.json", "utf8"));
 const pubKey = new paillierBigint.PublicKey(BigInt(pubKeyData.n), BigInt(pubKeyData.g));
 
 console.log("Encrypting Private Path (User 2)...");

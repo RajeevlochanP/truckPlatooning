@@ -194,17 +194,17 @@ router.post('/finalMatch', async (req, res) => {
         }
 
         const applicant = getUser(applicantId);
+        const leader = getUser(leaderId);
         if (!applicant || !applicant.hasBlindPath) {
             return res.status(400).json({ success: false, error: "Applicant has no blind path." });
         }
 
-        // Assume leader uses same paillier pubkey for this demo
-        const pubKey = applicant.pubKey; 
+        const pubKey = leader.pubKey; 
         
         let validCount = 0;
-        let matchCount = 0;
+        // let matchCount = 0;
         const results = [];
-
+        let firstMismatchIdx = -1;
         for (let i = 0; i < finalPaths.length; i++) {
             const C_blind = applicant.blindPath[i];
             const payload = finalPaths[i];
@@ -216,14 +216,15 @@ router.post('/finalMatch', async (req, res) => {
             if (isValid) {
                 validCount++;
                 // If m_true == 0, the routes are exactly the same
-                if (payload.m_true === "0") {
-                    matchCount++;
+                if (payload.m_true !== "0"  && firstMismatchIdx === -1) {
+                    // matchCount++;
+                    firstMismatchIdx = i;
                 }
             }
         }
 
         const isFullyVerified = (validCount === finalPaths.length);
-        const isRouteMatched = (matchCount === finalPaths.length);
+        const isRouteMatched = (firstMismatchIdx >= config.thresholdPathLength || firstMismatchIdx === -1);
 
         if (isFullyVerified && isRouteMatched) {
             addToPlatoon(leaderId, applicantId);
