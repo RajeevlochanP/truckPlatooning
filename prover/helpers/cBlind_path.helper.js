@@ -142,21 +142,21 @@ export function proverBlindMatch(pubKeyLeader, pubKeyApplicant, C_L_str, C_A_str
     const z2 = (r_s2 * modPow(r_v, e, N_A)) % N_A;
     const z3 = (r_s3 * modPow(gamma, e, N_L)) % N_L;
 
-    // ==========================================
-    // INTERNAL PROVER SANITY CHECK (EQUATION 1)
-    // ==========================================
-    const eq1_lhs = modPow(z1, N_A, N_A2);
-    const eq1_rhs_1 = (A1 * modPow(C_beta, e, N_A2)) % N_A2;
-    const eq1_rhs = (eq1_rhs_1 * modPow(C_A, z_alpha, N_A2)) % N_A2;
+    // // ==========================================
+    // // INTERNAL PROVER SANITY CHECK (EQUATION 1)
+    // // ==========================================
+    // const eq1_lhs = modPow(z1, N_A, N_A2);
+    // const eq1_rhs_1 = (A1 * modPow(C_beta, e, N_A2)) % N_A2;
+    // const eq1_rhs = (eq1_rhs_1 * modPow(C_A, z_alpha, N_A2)) % N_A2;
     
-    if (eq1_lhs !== eq1_rhs) {
-        console.error("❌ CRITICAL: Prover failed its own math check!");
-        console.log(`LHS: ${eq1_lhs}\nRHS: ${eq1_rhs}`);
-        process.exit(1);
-    } else {
-        console.log("✅ Prover Internal Math Check Passed.");
-    }
-    // ==========================================
+    // if (eq1_lhs !== eq1_rhs) {
+    //     console.error("❌ CRITICAL: Prover failed its own math check!");
+    //     console.log(`LHS: ${eq1_lhs}\nRHS: ${eq1_rhs}`);
+    //     process.exit(1);
+    // } else {
+    //     console.log("✅ Prover Internal Math Check Passed.");
+    // }
+    // // ==========================================
 
     return {
         C_beta: C_beta.toString(),

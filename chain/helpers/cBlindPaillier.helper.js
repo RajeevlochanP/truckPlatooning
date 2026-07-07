@@ -103,7 +103,7 @@ export function verifyBlindMatch(pubKeyLeader, pubKeyApplicant, C_L_str, C_A_str
         return false;
     }
 
-    console.log("Proof Verified: Blind Calculation Correct.");
+    // console.log("Proof Verified: Blind Calculation Correct.");
     return true;
 }
 
