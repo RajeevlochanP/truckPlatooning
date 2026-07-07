@@ -32,11 +32,12 @@ const leaderPath = leaderData.encryptedPath;
 
 const applicantFetch = await fetch("http://localhost:3000/users/2/path");
 const applicantData = await applicantFetch.json();
+// console.log(applicantData);
 const applicantPath = applicantData.encryptedPath;
 
 // Load Public Keys
-const user1PubKey = JSON.parse(await fs.readFile("../public/paillier_pk.json", "utf8"));
-const user2PubKey = JSON.parse(await fs.readFile("../public/paillier_pk.json", "utf8"));
+const user1PubKey = JSON.parse(await fs.readFile("../public/user1_paillier_pk.json", "utf8"));
+const user2PubKey = JSON.parse(await fs.readFile("../public/user2_paillier_pk.json", "utf8"));
 
 // Load User 2's randomness saved from Phase 1
 const user2Randoms = JSON.parse(await fs.readFile("../private/user2_randoms.json", "utf8"));

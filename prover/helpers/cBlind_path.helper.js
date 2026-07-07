@@ -77,28 +77,36 @@ export function proverBlindMatch(pubKeyLeader, pubKeyApplicant, C_L_str, C_A_str
 
     // 2. Compute beta = -m_A * alpha (Negative BigInt over Z)
     const beta = -(m_A * alpha);
+    const beta_abs = -beta; // The positive magnitude of beta
 
     // 3. Compute r_v = r_A^(-alpha) * r_u mod N_A
-    const r_A_inv_alpha = modPow(r_A, -alpha, N_A);
+    const r_A_inv = modInverse(r_A, N_A);
+    const r_A_inv_alpha = modPow(r_A_inv, alpha, N_A);
     const r_v = (r_A_inv_alpha * r_u) % N_A;
 
     // 4. Compute C_beta = C_A^(-alpha) * r_u^(N_A) mod N_A^2
-    const c_a_inv_alpha = modPow(C_A, -alpha, N_A2);
+    const C_A_inv = modInverse(C_A, N_A2);
+    const c_a_inv_alpha = modPow(C_A_inv, alpha, N_A2);
     const r_u_N_A = modPow(r_u, N_A, N_A2);
     const C_beta = (c_a_inv_alpha * r_u_N_A) % N_A2;
 
     // 5. Compute C_blind = C_L^alpha * g_L^beta * gamma^(N_L) mod N_L^2
     const c_l_alpha = modPow(C_L, alpha, N_L2);
-    const g_l_beta = modPow(g_L, beta, N_L2);
+    const g_L_inv = modInverse(g_L, N_L2);
+    const g_l_beta = modPow(g_L_inv, beta_abs, N_L2); // Raise inverse to positive beta_abs
     const gamma_N_L = modPow(gamma, N_L, N_L2);
     const C_blind = (((c_l_alpha * g_l_beta) % N_L2) * gamma_N_L) % N_L2;
 
     // --- ZKP pi_eval Generation ---
     // Sample r_alpha in [0, 2^128 * N_L], r_beta in [0, 2^128 * N_A]
     const r_alpha_max = N_L * (1n << 128n);
-    const r_beta_max = N_A * (1n << 128n);
-    
     const r_alpha = randBetween(0n, r_alpha_max);
+
+    // STATISTICAL HIDING FIX: r_beta must dominate (e * beta) to keep z_beta positive!
+    // Assuming 'e' is a 256-bit hash, its max value is ~2^256. 
+    // We multiply by 2^128 for the lambda hiding factor.
+    const e_max = 1n << 256n; 
+    const r_beta_max = (beta_abs * e_max) * (1n << 128n); 
     const r_beta = randBetween(0n, r_beta_max);
 
     // Sample r_s1, r_s2 in Z*_N_A, r_s3 in Z*_N_L
@@ -107,7 +115,7 @@ export function proverBlindMatch(pubKeyLeader, pubKeyApplicant, C_L_str, C_A_str
     const r_s3 = randBetween(1n, N_L);
 
     // A1 = C_A^(-r_alpha) * r_s1^(N_A) mod N_A^2
-    const a1_term1 = modPow(C_A, -r_alpha, N_A2);
+    const a1_term1 = modPow(C_A_inv, r_alpha, N_A2); // Safely use C_A_inv from earlier
     const a1_term2 = modPow(r_s1, N_A, N_A2);
     const A1 = (a1_term1 * a1_term2) % N_A2;
 
@@ -133,6 +141,22 @@ export function proverBlindMatch(pubKeyLeader, pubKeyApplicant, C_L_str, C_A_str
     const z1 = (r_s1 * modPow(r_u, e, N_A)) % N_A;
     const z2 = (r_s2 * modPow(r_v, e, N_A)) % N_A;
     const z3 = (r_s3 * modPow(gamma, e, N_L)) % N_L;
+
+    // ==========================================
+    // INTERNAL PROVER SANITY CHECK (EQUATION 1)
+    // ==========================================
+    const eq1_lhs = modPow(z1, N_A, N_A2);
+    const eq1_rhs_1 = (A1 * modPow(C_beta, e, N_A2)) % N_A2;
+    const eq1_rhs = (eq1_rhs_1 * modPow(C_A, z_alpha, N_A2)) % N_A2;
+    
+    if (eq1_lhs !== eq1_rhs) {
+        console.error("❌ CRITICAL: Prover failed its own math check!");
+        console.log(`LHS: ${eq1_lhs}\nRHS: ${eq1_rhs}`);
+        process.exit(1);
+    } else {
+        console.log("✅ Prover Internal Math Check Passed.");
+    }
+    // ==========================================
 
     return {
         C_beta: C_beta.toString(),

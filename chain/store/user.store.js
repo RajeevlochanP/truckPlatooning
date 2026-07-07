@@ -125,26 +125,27 @@ export function storeUserPath(id, encryptedPath) {
 // }
 
 // Add a new structure to track platoons
-const platoons = {}; 
+const platoons = {};
 
 export function storeUserBlindPath(id, blindPath) {
-    const user = userStore.get(id);
-    if (user) {
-        user.blindPath = blindPath;
-        user.hasBlindPath = true;
-        userStore.set(id, user);
-    }
+  console.log(`Storing blind path for user ${id}` + ` (length: ${blindPath.length})`);
+  const user = userStore.get(id);
+  if (user) {
+    user.blindPath = blindPath;
+    user.hasBlindPath = true;
+    userStore.set(id, user);
+  }
 }
 
 export function createPlatoon(leaderId) {
-    if (!platoons[leaderId]) platoons[leaderId] = [];
+  if (!platoons[leaderId]) platoons[leaderId] = [];
 }
 
 export function addToPlatoon(leaderId, memberId) {
-    if (!platoons[leaderId]) createPlatoon(leaderId);
-    if (!platoons[leaderId].includes(memberId)) platoons[leaderId].push(memberId);
+  if (!platoons[leaderId]) createPlatoon(leaderId);
+  if (!platoons[leaderId].includes(memberId)) platoons[leaderId].push(memberId);
 }
 
 export function getPlatoon(leaderId) {
-    return platoons[leaderId] || [];
+  return platoons[leaderId] || [];
 }
