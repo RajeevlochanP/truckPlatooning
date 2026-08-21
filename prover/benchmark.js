@@ -20,7 +20,7 @@ async function runBenchmark() {
     const pubKey2 = new paillierBigint.PublicKey(BigInt(pubKeyData2.n), BigInt(pubKeyData2.g));
 
     // Define path lengths to test (to prove O(l) linearity)
-    const pathLengths = [10, 20, 50, 100, 200, 500, 1000];
+    const pathLengths = [10, 20, 30, 40, 50];
     
     // CSV Header
     let csvContent = "PathLength(l),P1_Commit_Gen_ms,P2_App_Blind_Gen_ms,P2_SC_Blind_Verify_ms,P2_Leader_Decrypt_Gen_ms,P2_SC_Final_Verify_ms,Total_Phase2_ms\n";
