@@ -62,36 +62,50 @@ function runBenchmark() {
         const commsA = routeA.map(w => applicant.commitWaypoint(w));
         const commsL = routeL.map(w => leader.commitWaypoint(w));
         
+        // Precompute offline states
+        const statesA = commsA.map(cA => applicant.precomputeEval(cA.C_A_inv));
+        
         let t_a_ms = 0;
         let sc_verify_ms = 0;
         let t_l_dec_ms = 0;
         
-        // Measure ONLY Online Phase 2 Operations
+        let C_A_arr = [], C_L_arr = [], C_beta_arr = [], C_blind_arr = [], pi_eval_arr = [], pi_final_arr = [];
+
+        // Loop 1 (Applicant Generation)
         for (let i = 0; i < l; i++) {
             const cA = commsA[i];
             const cL = commsL[i];
+            const state = statesA[i];
             
-            // Applicant Generation
+            C_A_arr.push(cA.C_x);
+            C_L_arr.push(cL.C_x);
+            
             let t0 = performance.now();
-            const { C_beta, C_blind, pi_eval } = applicant.evaluateMatch(cA.w, cA.C_x, cA.r_x, cL.C_x);
+            const { C_beta, C_blind, pi_eval } = applicant.evaluateMatch(cA.w, cA.C_x, cA.C_A_inv, cA.r_A_inv, cL.C_x, state);
             let t1 = performance.now();
             t_a_ms += (t1 - t0);
             
-            // Smart Contract Verification
-            t0 = performance.now();
-            const isValid = sc.verifyEvalProof(cA.C_x, cL.C_x, C_beta, C_blind, pi_eval);
-            t1 = performance.now();
-            sc_verify_ms += (t1 - t0);
-            
-            if (!isValid) {
-                console.error("Smart Contract Verification Failed for waypoint", i);
-                process.exit(1);
-            }
-            
-            // Leader Decryption & Match
-            t0 = performance.now();
-            const { isMatch, m_true, pi_final } = leader.decideMatch(C_blind);
-            t1 = performance.now();
+            C_beta_arr.push(C_beta);
+            C_blind_arr.push(C_blind);
+            pi_eval_arr.push(pi_eval);
+        }
+
+        // Batch Verify 1
+        let t0 = performance.now();
+        const isValid = sc.verifyEvalProofBatch(C_A_arr, C_L_arr, C_beta_arr, C_blind_arr, pi_eval_arr);
+        let t1 = performance.now();
+        sc_verify_ms += (t1 - t0);
+        
+        if (!isValid) {
+            console.error("Smart Contract Verification Failed for batch!");
+            process.exit(1);
+        }
+
+        // Loop 2 (Leader Decrypt)
+        for (let i = 0; i < l; i++) {
+            let t0 = performance.now();
+            const { isMatch, m_true, pi_final } = leader.decideMatch(C_blind_arr[i]);
+            let t1 = performance.now();
             t_l_dec_ms += (t1 - t0);
             
             if (!isMatch) {
@@ -99,16 +113,18 @@ function runBenchmark() {
                 process.exit(1);
             }
             
-            // Smart Contract Verification (Final Proof)
-            t0 = performance.now();
-            const isFinalValid = sc.verifyFinalProof(C_blind, pi_final, keyL.pub);
-            t1 = performance.now();
-            sc_verify_ms += (t1 - t0);
-            
-            if (!isFinalValid) {
-                console.error("Smart Contract Verification of Final Proof Failed for waypoint", i);
-                process.exit(1);
-            }
+            pi_final_arr.push(pi_final);
+        }
+
+        // Batch Verify 2
+        t0 = performance.now();
+        const isFinalValid = sc.verifyFinalProofBatch(C_blind_arr, pi_final_arr, keyL.pub);
+        t1 = performance.now();
+        sc_verify_ms += (t1 - t0);
+        
+        if (!isFinalValid) {
+            console.error("Smart Contract Verification of Final Proof Failed for batch!");
+            process.exit(1);
         }
         
         const total_ms = t_a_ms + sc_verify_ms + t_l_dec_ms;

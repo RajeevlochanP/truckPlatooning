@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const bma = require('bigint-mod-arith');
 
 function gcd(a, b) {
     while (b !== 0n) {
@@ -14,42 +15,17 @@ function lcm(a, b) {
 }
 
 function modInverse(a, m) {
-    let m0 = m;
-    let y = 0n;
-    let x = 1n;
-    if (m === 1n) return 0n;
-    
-    if (a < 0n) {
-        a = (a % m + m) % m;
-    }
-    
-    while (a > 1n) {
-        let q = a / m;
-        let t = m;
-        m = a % m;
-        a = t;
-        t = y;
-        y = x - q * y;
-        x = t;
-    }
-    if (x < 0n) x += m0;
-    return x;
+    return bma.modInv(a, m);
 }
 
 function modPow(b, e, m) {
     if (e < 0n) {
-        b = modInverse(b, m);
+        b = bma.modInv(b, m);
         e = -e;
     }
-    let r = 1n;
     b = b % m;
     if (b < 0n) b = (b + m) % m;
-    while (e > 0n) {
-        if (e & 1n) r = (r * b) % m;
-        e >>= 1n;
-        b = (b * b) % m;
-    }
-    return r;
+    return bma.modPow(b, e, m);
 }
 
 function randBigIntRange(max) {

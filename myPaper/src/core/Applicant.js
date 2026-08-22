@@ -1,4 +1,4 @@
-const { modPow, randBigIntRange } = require('../crypto/paillier');
+const { modPow, randBigIntRange, modInverse } = require('../crypto/paillier');
 const { sha256BigInt } = require('../crypto/nizkp');
 
 class Applicant {
@@ -17,8 +17,7 @@ class Applicant {
         
         const C_x = (modPow(g, w, N2) * modPow(r_x, N, N2)) % N2;
 
-        const maxRho = (1n << 128n) * N;
-        const rho = randBigIntRange(maxRho);
+        const rho = randBigIntRange(1n << 464n);
         
         let s;
         do { s = randBigIntRange(N); } while (s === 0n);
@@ -30,48 +29,67 @@ class Applicant {
         const z_1 = rho + e * w;
         const z_2 = (s * modPow(r_x, e, N)) % N;
 
+        const C_A_inv = modInverse(C_x, N2);
+        const r_A_inv = modInverse(r_x, N);
+
         const pi_init = { A_x, e, z_1, z_2 };
-        return { C_x, r_x, pi_init, w };
+        return { C_x, r_x, pi_init, w, C_A_inv, r_A_inv };
     }
     
-    // Algorithm 2: Cross-Modulus Path Evaluation
-    evaluateMatch(w_A, C_A, r_A, C_L) {
-        w_A = BigInt(w_A);
+    precomputeEval(C_A_inv) {
         const NA = this.keys.pub.N;
         const NA2 = this.keys.pub.N2;
         const gA = this.keys.pub.g;
         
         const NL = this.pubL.N;
         const NL2 = this.pubL.N2;
-        const gL = this.pubL.g;
         
-        const alpha = randBigIntRange(NA - 1n) + 1n; 
-        const beta = -w_A * alpha;
-        
+        const alpha = randBigIntRange(1n << 128n); 
         const r_u = randBigIntRange(NA - 1n) + 1n;
-        const gamma = randBigIntRange(NL - 1n) + 1n;
+        const gamma = randBigIntRange(1n << 128n);
         
-        const C_beta = (modPow(C_A, -alpha, NA2) * modPow(r_u, NA, NA2)) % NA2;
-        
-        const part1 = modPow(C_L, alpha, NL2);
-        const part2 = modPow(gL, beta, NL2);
-        const part3 = modPow(gamma, NL, NL2);
-        const C_blind = (((part1 * part2) % NL2) * part3) % NL2;
-        
-        const r_v = (modPow(r_A, -alpha, NA) * r_u) % NA;
-        
-        const r_alpha = randBigIntRange((1n << 128n) * NA * NL);
-        const r_beta = randBigIntRange((1n << 128n) * NA);
+        const r_alpha = randBigIntRange(1n << 464n);
+        const r_beta = randBigIntRange(1n << 464n);
         const r_s1 = randBigIntRange(NA - 1n) + 1n;
         const r_s2 = randBigIntRange(NA - 1n) + 1n;
         const r_s3 = randBigIntRange(NL - 1n) + 1n;
         
-        const A1 = (modPow(C_A, -r_alpha, NA2) * modPow(r_s1, NA, NA2)) % NA2;
-        const A2 = (modPow(gA, r_beta, NA2) * modPow(r_s2, NA, NA2)) % NA2;
+        const r_u_N = modPow(r_u, NA, NA2);
+        const gamma_N = modPow(gamma, NL, NL2);
+        const r_s3_N = modPow(r_s3, NL, NL2);
+        
+        const A1 = (modPow(C_A_inv, r_alpha, NA2) * modPow(r_s1, NA, NA2)) % NA2;
+        const gA_r_beta = (1n + (r_beta % NA) * NA) % NA2;
+        const A2 = (gA_r_beta * modPow(r_s2, NA, NA2)) % NA2;
+        
+        return { alpha, r_u, gamma, r_alpha, r_beta, r_s1, r_s2, r_s3, A1, A2, r_u_N, gamma_N, r_s3_N };
+    }
+
+    // Algorithm 2: Cross-Modulus Path Evaluation
+    evaluateMatch(w_A, C_A, C_A_inv, r_A_inv, C_L, state) {
+        w_A = BigInt(w_A);
+        const NA = this.keys.pub.N;
+        const NA2 = this.keys.pub.N2;
+        
+        const NL = this.pubL.N;
+        const NL2 = this.pubL.N2;
+        const gL = this.pubL.g;
+        
+        const { alpha, r_u, gamma, r_alpha, r_beta, r_s1, r_s2, r_s3, A1, A2, r_u_N, gamma_N, r_s3_N } = state;
+        const beta = -w_A * alpha;
+        
+        const C_beta = (modPow(C_A_inv, alpha, NA2) * r_u_N) % NA2;
+        
+        const part1 = modPow(C_L, alpha, NL2);
+        const part2 = ((1n + ((beta % NL + NL) % NL) * NL) % NL2 + NL2) % NL2;
+        const part3 = gamma_N;
+        const C_blind = (((part1 * part2) % NL2) * part3) % NL2;
+        
+        const r_v = (modPow(r_A_inv, alpha, NA) * r_u) % NA;
         
         const A3_p1 = modPow(C_L, r_alpha, NL2);
-        const A3_p2 = modPow(gL, r_beta, NL2);
-        const A3_p3 = modPow(r_s3, NL, NL2);
+        const A3_p2 = (1n + (r_beta % NL) * NL) % NL2;
+        const A3_p3 = r_s3_N;
         const A3 = (((A3_p1 * A3_p2) % NL2) * A3_p3) % NL2;
         
         const e = sha256BigInt(C_A, C_L, C_beta, C_blind, A1, A2, A3);

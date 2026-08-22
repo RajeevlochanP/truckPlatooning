@@ -5,6 +5,11 @@ class Leader {
     constructor(keys, pubA) {
         this.keys = keys;
         this.pubA = pubA;
+        
+        // Precompute deterministic decryption constant
+        const { p, q } = keys.priv;
+        const phiN = (p - 1n) * (q - 1n);
+        this.N_inv_phi = modInverse(keys.pub.N, phiN);
     }
 
     commitWaypoint(w) {
@@ -14,7 +19,7 @@ class Leader {
         const r_x = randBigIntRange(N - 1n) + 1n;
         const C_x = (modPow(g, w, N2) * modPow(r_x, N, N2)) % N2;
 
-        const rho = randBigIntRange((1n << 128n) * N);
+        const rho = randBigIntRange(1n << 464n);
         const s = randBigIntRange(N - 1n) + 1n;
 
         const A_x = (modPow(g, rho, N2) * modPow(s, N, N2)) % N2;
@@ -31,7 +36,7 @@ class Leader {
         const { N, N2, g } = this.keys.pub;
         const { lambda, mu, p, q } = this.keys.priv;
         
-        const r_P = randBigIntRange(N - 1n) + 1n;
+        const r_P = randBigIntRange(1n << 128n);
         const C_final = modPow(C_blind, r_P, N2);
         
         const L = (u) => (u - 1n) / N;
@@ -39,13 +44,16 @@ class Leader {
         
         const isMatch = (m_true === 0n);
         
-        const C_rand = (C_final * modPow(g, -m_true, N2)) % N2;
+        let C_rand;
+        if (isMatch) {
+            C_rand = C_final;
+        } else {
+            C_rand = (C_final * modPow(g, -m_true, N2)) % N2;
+        }
         
-        const phiN = (p - 1n) * (q - 1n);
-        const N_inv_phi = modInverse(N, phiN);
-        const R = modPow(C_rand, N_inv_phi, N);
+        const R = modPow(C_rand, this.N_inv_phi, N);
         
-        const s = randBigIntRange(N2 / 2n);
+        const s = randBigIntRange(1n << 464n);
         const A_L_prime = modPow(C_blind, s, N2);
         
         const e_L = sha256BigInt(N, C_blind, C_final, A_L_prime);
