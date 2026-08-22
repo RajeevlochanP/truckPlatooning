@@ -37,6 +37,30 @@ class SmartContract {
         
         return true;
     }
+
+    verifyFinalProof(C_blind, pi_final, pubL) {
+        const N = pubL.N;
+        const N2 = pubL.N2;
+        
+        const { m_true, R, C_final, A_L_prime, e_L, z_L } = pi_final;
+        
+        // 1. Verify Double-Blinding ZKP:
+        // C_blind^{z_L} == A_L' * C_final^{e_L} (mod N^2)
+        const lhs1 = modPow(C_blind, z_L, N2);
+        const rhs1 = (A_L_prime * modPow(C_final, e_L, N2)) % N2;
+        if (lhs1 !== rhs1) return false;
+        
+        // 2. Verify Deterministic Decryption:
+        // R^N * g^{m_true} == C_final (mod N^2)
+        // Optimization: g^{m_true} mod N^2 == (1 + m_true * N) mod N^2
+        const lhs2_part1 = modPow(R, N, N2);
+        const lhs2_part2 = (1n + m_true * N) % N2;
+        const lhs2 = (lhs2_part1 * lhs2_part2) % N2;
+        
+        if (lhs2 !== C_final) return false;
+        
+        return true;
+    }
 }
 
 module.exports = SmartContract;

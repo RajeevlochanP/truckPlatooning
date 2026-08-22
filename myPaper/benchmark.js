@@ -90,12 +90,23 @@ function runBenchmark() {
             
             // Leader Decryption & Match
             t0 = performance.now();
-            const { isMatch, m_true } = leader.decideMatch(C_blind);
+            const { isMatch, m_true, pi_final } = leader.decideMatch(C_blind);
             t1 = performance.now();
             t_l_dec_ms += (t1 - t0);
             
             if (!isMatch) {
                 console.error("Match failed for identical waypoint!");
+                process.exit(1);
+            }
+            
+            // Smart Contract Verification (Final Proof)
+            t0 = performance.now();
+            const isFinalValid = sc.verifyFinalProof(C_blind, pi_final, keyL.pub);
+            t1 = performance.now();
+            sc_verify_ms += (t1 - t0);
+            
+            if (!isFinalValid) {
+                console.error("Smart Contract Verification of Final Proof Failed for waypoint", i);
                 process.exit(1);
             }
         }
