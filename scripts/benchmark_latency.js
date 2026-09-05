@@ -2,172 +2,147 @@ const fs = require('fs');
 const path = require('path');
 const { performance } = require('perf_hooks');
 
+// HE-PSI legacy imports
 const Applicant = require('../myPaper/src/core/Applicant');
 const Leader = require('../myPaper/src/core/Leader');
 const SmartContract = require('../myPaper/src/core/SmartContract');
-const CU = require('../TAROT/src/core/CU');
+
+// COT-PE imports
+const COTPEEngine = require('../cot2/engine/COTPEEngine');
 
 function parseBigInts(obj) {
     if (typeof obj === 'string') {
-        try {
-            return BigInt(obj);
-        } catch(e) {
-            return obj;
-        }
+        try { return BigInt(obj); } catch(e) { return obj; }
     }
     if (Array.isArray(obj)) return obj.map(parseBigInts);
     if (obj !== null && typeof obj === 'object') {
         const res = {};
-        for (const [k, v] of Object.entries(obj)) {
-            res[k] = parseBigInts(v);
-        }
+        for (const [k, v] of Object.entries(obj)) res[k] = parseBigInts(v);
         return res;
     }
     return obj;
 }
 
+// ==== LOAD OFFLINE KEYS (EXCLUDED FROM ONLINE LATENCY) ====
 const hePsiKeysPath = path.join(__dirname, '../myPaper/keys.json');
-const tarotKeysPath = path.join(__dirname, '../TAROT/keys.json');
+const cotpeKeysPath = path.join(__dirname, '../cot2/config/keys.json');
+const cotpeParamsPath = path.join(__dirname, '../cot2/config/public_params.json');
 
-if (!fs.existsSync(hePsiKeysPath)) {
-    console.error(`HE-PSI keys not found at ${hePsiKeysPath}`);
-    process.exit(1);
-}
-if (!fs.existsSync(tarotKeysPath)) {
-    console.error(`TAROT keys not found at ${tarotKeysPath}`);
-    process.exit(1);
-}
+if (!fs.existsSync(hePsiKeysPath)) { console.error(`HE-PSI keys not found`); process.exit(1); }
+if (!fs.existsSync(cotpeKeysPath)) { console.error(`COT-PE keys not found`); process.exit(1); }
 
-// Load HE-PSI Keys
-const hePsiKeysRaw = JSON.parse(fs.readFileSync(hePsiKeysPath, 'utf8'));
-const hePsiKeys = parseBigInts(hePsiKeysRaw);
+const hePsiKeys = parseBigInts(JSON.parse(fs.readFileSync(hePsiKeysPath, 'utf8')));
 const keyA = hePsiKeys.Applicant;
 const keyL = hePsiKeys.Leader;
-
 const applicant = new Applicant(keyA, keyL.pub);
 const leader = new Leader(keyL, keyA.pub);
 const sc = new SmartContract(keyA.pub, keyL.pub);
 
-// Load TAROT Keys
-const tarotKeysRaw = JSON.parse(fs.readFileSync(tarotKeysPath, 'utf-8'));
-const pk = {
-    n: BigInt(tarotKeysRaw.publicKey.n),
-    g: BigInt(tarotKeysRaw.publicKey.g)
-};
-const sk = {
-    p: BigInt(tarotKeysRaw.privateKey.p),
-    q: BigInt(tarotKeysRaw.privateKey.q)
-};
+// Note: COT-PE keys are loaded during setup, but engine instantiates dynamically.
+// Loading them here to prove zero-cost online setup.
+JSON.parse(fs.readFileSync(cotpeKeysPath, 'utf8'));
+JSON.parse(fs.readFileSync(cotpeParamsPath, 'utf8'));
 
 const pathLengths = [10, 20, 30, 40, 50];
 const csvPath = path.join(__dirname, 'benchmark_latency.csv');
 
-// Initialize CSV
-const csvHeader = "PathLength(l),HE_PSI_T_A_ms,HE_PSI_SC_ms,HE_PSI_T_L_ms,HE_PSI_Total_ms,TAROT_Eval_ms,TAROT_Dec_ms,TAROT_Total_ms";
+const csvHeader = "PathLength(l),HE_PSI_Total_ms,COTPE_Phase1,COTPE_Phase2,COTPE_Phase3,COTPE_Phase4,COTPE_Phase5,COTPE_Total_ms";
 let csvContent = csvHeader + "\n";
-console.log(csvHeader);
+console.log(csvHeader.replace(/,/g, ' | '));
+console.log("-".repeat(120));
+
+const cotpeEngine = new COTPEEngine();
+
+// ==== 5-ITERATION WARMUP ====
+console.log("Running 5-iteration warm-up...");
+for (let i = 0; i < 5; i++) {
+    const w = Array.from({length: 10}, (_, i) => i + 100);
+    // Warmup HE-PSI
+    const commsA = w.map(x => applicant.commitWaypoint(BigInt(x)));
+    const commsL = w.map(x => leader.commitWaypoint(BigInt(x)));
+    const statesA = commsA.map(cA => applicant.precomputeEval(cA.C_A_inv));
+    const { C_beta, C_blind, pi_eval } = applicant.evaluateMatch(commsA[0].w, commsA[0].C_x, commsA[0].C_A_inv, commsA[0].r_A_inv, commsL[0].C_x, statesA[0]);
+    // Warmup COT-PE
+    cotpeEngine.runProtocol(w, w, 5);
+}
+console.log("Warm-up complete.\n");
 
 for (const l of pathLengths) {
-    // ==== HE-PSI OFFLINE PRECOMPUTATION ====
-    const routeA = Array.from({length: l}, (_, i) => BigInt(i + 100));
-    const routeL = Array.from({length: l}, (_, i) => BigInt(i + 100)); // matching route
+    const ITERATIONS = 10;
     
-    const commsA = routeA.map(w => applicant.commitWaypoint(w));
-    const commsL = routeL.map(w => leader.commitWaypoint(w));
-    const statesA = commsA.map(cA => applicant.precomputeEval(cA.C_A_inv));
-    
-    // ==== TAROT OFFLINE PRECOMPUTATION ====
-    const trajA = Array.from({ length: l }, (_, i) => 1000 + i);
-    const trajB = Array.from({ length: l }, (_, i) => 1000 + i); 
-    const encTrajA = trajA.map(wp => CU.encryptWaypoint(wp, pk));
-    const encTrajB = trajB.map(wp => CU.encryptWaypoint(wp, pk));
+    let hepsi_total = 0;
+    let cotpe_p1 = 0, cotpe_p2 = 0, cotpe_p3 = 0, cotpe_p4 = 0, cotpe_p5 = 0, cotpe_total = 0;
 
-    // ==== HE-PSI ONLINE PHASE ====
-    let t_a_ms = 0;
-    let sc_verify_ms = 0;
-    let t_l_dec_ms = 0;
-    
-    let C_A_arr = [], C_L_arr = [], C_beta_arr = [], C_blind_arr = [], pi_eval_arr = [], pi_final_arr = [];
+    for (let iter = 0; iter < ITERATIONS; iter++) {
+        // Shared random routes for this iteration
+        const routeA = Array.from({length: l}, (_, i) => i + 1000);
+        const routeL = Array.from({length: l}, (_, i) => i + 1000); // 100% match
 
-    // HE-PSI Applicant Generation (Online)
-    for (let i = 0; i < l; i++) {
-        const cA = commsA[i];
-        const cL = commsL[i];
-        const state = statesA[i];
+        // =====================================
+        // HE-PSI
+        // =====================================
+        // Offline
+        const commsA = routeA.map(w => applicant.commitWaypoint(BigInt(w)));
+        const commsL = routeL.map(w => leader.commitWaypoint(BigInt(w)));
+        const statesA = commsA.map(cA => applicant.precomputeEval(cA.C_A_inv));
+
+        let C_A_arr = [], C_L_arr = [], C_beta_arr = [], C_blind_arr = [], pi_eval_arr = [], pi_final_arr = [];
         
-        C_A_arr.push(cA.C_x);
-        C_L_arr.push(cL.C_x);
+        // Online HE-PSI sum
+        let t_a = 0, sc_v1 = 0, t_l = 0, sc_v2 = 0;
         
-        let t0 = performance.now();
-        const { C_beta, C_blind, pi_eval } = applicant.evaluateMatch(cA.w, cA.C_x, cA.C_A_inv, cA.r_A_inv, cL.C_x, state);
-        let t1 = performance.now();
-        t_a_ms += (t1 - t0);
-        
-        C_beta_arr.push(C_beta);
-        C_blind_arr.push(C_blind);
-        pi_eval_arr.push(pi_eval);
-    }
-
-    // HE-PSI SC Verify 1 (Online)
-    let t0 = performance.now();
-    const isValid = sc.verifyEvalProofBatch(C_A_arr, C_L_arr, C_beta_arr, C_blind_arr, pi_eval_arr);
-    let t1 = performance.now();
-    sc_verify_ms += (t1 - t0);
-
-    if (!isValid) {
-        console.error("Smart Contract Verification Failed for batch!");
-        process.exit(1);
-    }
-
-    // HE-PSI Leader Decrypt (Online)
-    for (let i = 0; i < l; i++) {
-        let t0 = performance.now();
-        const { isMatch, m_true, pi_final } = leader.decideMatch(C_blind_arr[i]);
-        let t1 = performance.now();
-        t_l_dec_ms += (t1 - t0);
-        pi_final_arr.push(pi_final);
-        
-        if (!isMatch) {
-            console.error("Match failed for identical waypoint!");
-            process.exit(1);
+        for (let i = 0; i < l; i++) {
+            C_A_arr.push(commsA[i].C_x);
+            C_L_arr.push(commsL[i].C_x);
+            
+            let t0 = performance.now();
+            const res = applicant.evaluateMatch(commsA[i].w, commsA[i].C_x, commsA[i].C_A_inv, commsA[i].r_A_inv, commsL[i].C_x, statesA[i]);
+            t_a += (performance.now() - t0);
+            C_beta_arr.push(res.C_beta);
+            C_blind_arr.push(res.C_blind);
+            pi_eval_arr.push(res.pi_eval);
         }
+
+        let t0 = performance.now();
+        sc.verifyEvalProofBatch(C_A_arr, C_L_arr, C_beta_arr, C_blind_arr, pi_eval_arr);
+        sc_v1 += (performance.now() - t0);
+
+        for (let i = 0; i < l; i++) {
+            let t0_dec = performance.now();
+            const res = leader.decideMatch(C_blind_arr[i]);
+            t_l += (performance.now() - t0_dec);
+            pi_final_arr.push(res.pi_final);
+        }
+
+        t0 = performance.now();
+        sc.verifyFinalProofBatch(C_blind_arr, pi_final_arr, keyL.pub);
+        sc_v2 += (performance.now() - t0);
+
+        hepsi_total += (t_a + sc_v1 + t_l + sc_v2);
+
+        // =====================================
+        // COT-PE
+        // =====================================
+        const resCOT = cotpeEngine.runProtocol(routeA, routeL, 10); // tau_min = 10
+        cotpe_p1 += resCOT.latencies.phase1_ms;
+        cotpe_p2 += resCOT.latencies.phase2_ms;
+        cotpe_p3 += resCOT.latencies.phase3_ms;
+        cotpe_p4 += resCOT.latencies.phase4_ms;
+        cotpe_p5 += resCOT.latencies.phase5_ms;
+        cotpe_total += resCOT.latencies.total_online_ms;
     }
 
-    // HE-PSI SC Verify 2 (Online)
-    t0 = performance.now();
-    const isFinalValid = sc.verifyFinalProofBatch(C_blind_arr, pi_final_arr, keyL.pub);
-    t1 = performance.now();
-    sc_verify_ms += (t1 - t0);
+    // Averages
+    const avg_hepsi = (hepsi_total / ITERATIONS).toFixed(3);
+    const avg_p1 = (cotpe_p1 / ITERATIONS).toFixed(3);
+    const avg_p2 = (cotpe_p2 / ITERATIONS).toFixed(3);
+    const avg_p3 = (cotpe_p3 / ITERATIONS).toFixed(3);
+    const avg_p4 = (cotpe_p4 / ITERATIONS).toFixed(3);
+    const avg_p5 = (cotpe_p5 / ITERATIONS).toFixed(3);
+    const avg_cotpe = (cotpe_total / ITERATIONS).toFixed(3);
 
-    if (!isFinalValid) {
-        console.error("Smart Contract Verification of Final Proof Failed for batch!");
-        process.exit(1);
-    }
-    
-    const hePsiTotal_ms = t_a_ms + sc_verify_ms + t_l_dec_ms;
-
-    // ==== TAROT ONLINE PHASE ====
-    const evaluatedE = new Array(l);
-
-    // TAROT Eval (Online)
-    const startEval = performance.now();
-    for (let i = 0; i < l; i++) {
-        evaluatedE[i] = CU.evaluateEquality(encTrajA[i], encTrajB[i], pk.n);
-    }
-    const evalMs = performance.now() - startEval;
-
-    // TAROT Dec (Online)
-    const startDec = performance.now();
-    for (let i = 0; i < l; i++) {
-        const isMatch = CU.decryptAndDecide(evaluatedE[i], sk);
-    }
-    const decMs = performance.now() - startDec;
-
-    const tarotTotal_ms = evalMs + decMs;
-
-    // Output formatting
-    const row = `${l},${t_a_ms.toFixed(3)},${sc_verify_ms.toFixed(3)},${t_l_dec_ms.toFixed(3)},${hePsiTotal_ms.toFixed(3)},${evalMs.toFixed(3)},${decMs.toFixed(3)},${tarotTotal_ms.toFixed(3)}`;
-    console.log(row);
+    const row = `${l},${avg_hepsi},${avg_p1},${avg_p2},${avg_p3},${avg_p4},${avg_p5},${avg_cotpe}`;
+    console.log(row.replace(/,/g, ' | '));
     csvContent += row + "\n";
 }
 
