@@ -1,0 +1,1 @@
+/usr/bin/c++ -pthread CMakeFiles/ppi_platoon.dir/ppi_platoon.cpp.o -o ppi_platoon  /usr/local/lib/liblibOTe.a /usr/lib/x86_64-linux-gnu/libcrypto.so -lpthread /usr/local/lib/libcryptoTools.a /usr/local/lib/libsodium.a /usr/local/lib/libcoproto.a /usr/local/lib/libmacoro.a /usr/local/lib/libspin.a /usr/local/lib/libseal-4.1.a /usr/local/lib/libKyberOT.a 

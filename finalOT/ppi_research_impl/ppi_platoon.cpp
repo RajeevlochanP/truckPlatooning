@@ -32,6 +32,13 @@
 #include <utility>
 #include <vector>
 
+#include <time.h>
+struct timespec start_offline, end_offline;
+struct timespec start_senderOT, end_senderOT;
+struct timespec start_receiverOT, end_receiverOT;
+struct timespec start_onlinePayLoadGen, end_onlinePayLoadGen;
+struct timespec start_onlinePrefixEval, end_onlinePrefixEval;
+
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -491,12 +498,15 @@ void sender_job(const std::string& session_id,
                 coproto::Socket& ot_channel) {
     try {
         std::cout << "[Leader] Phase 1: register trajectory commitments at SC\n";
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start_offline);
         const LeaderSecrets secrets = commit_trajectory(session_id, leader_path, sc);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_offline);
 
         std::vector<std::vector<Bytes>> sender_keys;
         OosRandomOT::Sender sender;
 
         std::cout << "[Leader] Phase 2: execute malicious OOS OT extension\n";
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start_senderOT);
         OosRandomOT::run_sender(
             sender,
             leader_path.size(),
@@ -504,10 +514,11 @@ void sender_job(const std::string& session_id,
             leader_path,
             sender_keys,
             ot_channel);
-
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_senderOT);
         std::cout << "[Leader] Phase 3: build aggregate PPI payload\n";
-        AggregatePayload message =
-            build_payload(leader_path, secrets, sender_keys);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start_onlinePayLoadGen);
+        AggregatePayload message = build_payload(leader_path, secrets, sender_keys);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_onlinePayLoadGen);
         payload_channel.publish(std::move(message));
 
         std::cout << "[Leader] Payload published to the communication channel.\n";
@@ -533,6 +544,7 @@ void receiver_job(const std::string& session_id,
         OosRandomOT::Receiver receiver;
 
         std::cout << "[Applicant] Phase 2: execute malicious OOS OT extension\n";
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start_receiverOT);
         OosRandomOT::run_receiver(
             receiver,
             applicant_path.size(),
@@ -540,15 +552,18 @@ void receiver_job(const std::string& session_id,
             applicant_path,
             receiver_keys,
             ot_channel);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_receiverOT);
 
         std::cout << "[Applicant] Phase 3: evaluate private prefix\n";
         const AggregatePayload message = payload_channel.receive();
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start_onlinePrefixEval);
         const PPIResult result = evaluate_prefix(
             applicant_path,
             commitments,
             message,
             receiver_keys,
             tau_min);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_onlinePrefixEval);
 
         std::cout << "[Applicant] Prefix length = " << result.prefix_length << '\n';
         std::cout << "[Applicant] Eligibility = "
@@ -659,6 +674,31 @@ int main(int argc, char** argv) {
 
         sender_thread.join();
         receiver_thread.join();
+
+        // Calculate the time taken for each phase
+        auto to_ms = [](const struct timespec& start, const struct timespec& end) {
+            return (end.tv_sec - start.tv_sec) * 1000.0 + 
+                   (end.tv_nsec - start.tv_nsec) / 1000000.0;
+        };
+
+        double offline_ms     = to_ms(start_offline, end_offline);
+        double sender_ot_ms   = to_ms(start_senderOT, end_senderOT);
+        double payload_gen_ms = to_ms(start_onlinePayLoadGen, end_onlinePayLoadGen);
+        
+        double receiver_ot_ms = to_ms(start_receiverOT, end_receiverOT);
+        double prefix_eval_ms = to_ms(start_onlinePrefixEval, end_onlinePrefixEval);
+
+        std::cout << "\n==================================================\n";
+        std::cout << "      PPI Benchmark Results (Thread CPU Time)       \n";
+        std::cout << "==================================================\n";
+        std::cout << std::fixed << std::setprecision(3);
+        std::cout << "[Leader]    Phase 1: Offline Commit : " << offline_ms << " ms\n";
+        std::cout << "[Leader]    Phase 2: OT Extension   : " << sender_ot_ms << " ms\n";
+        std::cout << "[Leader]    Phase 3: Payload Gen    : " << payload_gen_ms << " ms\n";
+        std::cout << "--------------------------------------------------\n";
+        std::cout << "[Applicant] Phase 2: OT Extension   : " << receiver_ot_ms << " ms\n";
+        std::cout << "[Applicant] Phase 3: Prefix Eval    : " << prefix_eval_ms << " ms\n";
+        std::cout << "==================================================\n";
 
         if (sender_error) std::rethrow_exception(sender_error);
         if (receiver_error) std::rethrow_exception(receiver_error);

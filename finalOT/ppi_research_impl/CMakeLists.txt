@@ -123,14 +123,8 @@ endif()
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(GENERATE
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/ppi_oos_adapter.hpp"
-    CONTENT
-"#pragma once\n"
-"#include <${PPI_OOS_SENDER_HEADER}>\n"
-"#include <${PPI_OOS_RECEIVER_HEADER}>\n"
-"namespace ppi_oos {\n"
-"using Sender = osuCrypto::${PPI_OOS_SENDER_CLASS};\n"
-"using Receiver = osuCrypto::${PPI_OOS_RECEIVER_CLASS};\n"
-"}\n")
+    CONTENT "#pragma once\n#include <${PPI_OOS_SENDER_HEADER}>\n#include <${PPI_OOS_RECEIVER_HEADER}>\nnamespace ppi_oos {\nusing Sender = osuCrypto::${PPI_OOS_SENDER_CLASS};\nusing Receiver = osuCrypto::${PPI_OOS_RECEIVER_CLASS};\n}\n"
+)
 
 add_executable(ppi_platoon ppi_platoon.cpp)
 
