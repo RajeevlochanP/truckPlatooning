@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
@@ -687,18 +688,34 @@ int main(int argc, char** argv) {
         
         double receiver_ot_ms = to_ms(start_receiverOT, end_receiverOT);
         double prefix_eval_ms = to_ms(start_onlinePrefixEval, end_onlinePrefixEval);
+        double total_online_ot_ms = sender_ot_ms + receiver_ot_ms;
+        double total_online_time_ms =
+            total_online_ot_ms + payload_gen_ms + prefix_eval_ms;
+        double total_time_ms = offline_ms + total_online_time_ms;
 
-        std::cout << "\n==================================================\n";
-        std::cout << "      PPI Benchmark Results (Thread CPU Time)       \n";
-        std::cout << "==================================================\n";
-        std::cout << std::fixed << std::setprecision(3);
-        std::cout << "[Leader]    Phase 1: Offline Commit : " << offline_ms << " ms\n";
-        std::cout << "[Leader]    Phase 2: OT Extension   : " << sender_ot_ms << " ms\n";
-        std::cout << "[Leader]    Phase 3: Payload Gen    : " << payload_gen_ms << " ms\n";
-        std::cout << "--------------------------------------------------\n";
-        std::cout << "[Applicant] Phase 2: OT Extension   : " << receiver_ot_ms << " ms\n";
-        std::cout << "[Applicant] Phase 3: Prefix Eval    : " << prefix_eval_ms << " ms\n";
-        std::cout << "==================================================\n";
+        constexpr const char* results_file = "ppi_benchmark_results.csv";
+        std::ofstream csv(results_file, std::ios::app);
+        if (!csv) {
+            throw std::runtime_error(
+                std::string("Unable to open results file: ") + results_file);
+        }
+
+        csv << std::fixed << std::setprecision(3);
+        if (csv.tellp() == std::streampos(0)) {
+            csv << "n,sigma_size,tau_min,divergence_index,"
+                   "offline_commit_ms,sender_ot_ms,payload_gen_ms,"
+                   "receiver_ot_ms,prefix_eval_ms,totalOnlineOT,"
+                   "totalOnlineTime,totalTime\n";
+        }
+        csv << n << ',' << sigma_size << ',' << tau_min << ','
+            << intentional_diverge << ',' << offline_ms << ',' << sender_ot_ms
+            << ',' << payload_gen_ms << ',' << receiver_ot_ms << ','
+            << prefix_eval_ms << ',' << total_online_ot_ms << ','
+            << total_online_time_ms << ',' << total_time_ms << '\n';
+        if (!csv) {
+            throw std::runtime_error(
+                std::string("Unable to write results file: ") + results_file);
+        }
 
         if (sender_error) std::rethrow_exception(sender_error);
         if (receiver_error) std::rethrow_exception(receiver_error);
